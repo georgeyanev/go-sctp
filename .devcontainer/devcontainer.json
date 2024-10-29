@@ -1,0 +1,17 @@
+{
+  "name": "go-sctp",
+  "dockerFile": "Dockerfile",
+  "appPort": [
+    "8111:8111"
+  ],
+  "postCreateCommand": "go mod download",
+  "containerEnv": {
+    "TZ": "Europe/Sofia"
+  },
+  "mounts": [
+    "source=/Users/george/devcontainers-shared-data,target=/devcontainers-shared-data, type=bind"
+  ],
+  "shutdownAction": "none",
+  "privileged": true,
+  "capAdd": []
+}
