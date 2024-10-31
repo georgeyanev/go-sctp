@@ -3,8 +3,14 @@ package sctp
 import (
 	"context"
 	"net"
+	"os"
 	"syscall"
 )
+
+type SCTPListener struct {
+	c  *conn
+	lc *ListenConfig
+}
 
 // ListenConfig TODO: possibly add more fields (specific to SCTP)
 // ListenConfig contains options for listening to an address.
@@ -26,11 +32,6 @@ type ListenConfig struct {
 
 }
 
-type SCTPListener struct {
-	c  *conn
-	lc *ListenConfig
-}
-
 // Listen announces on the local network address.
 //
 // The network must be "sctp", "sctp4" or "sctp6".
@@ -46,6 +47,11 @@ type SCTPListener struct {
 // "127.0.0.1:" or "[::1]:0", a port number is automatically chosen.
 // The [Addr] method of [Listener] can be used to discover the chosen
 // port.
+// Multiple addresses can be specified separated by '/' as in :
+// 127.0.0.1/127.0.0.2:0 (sctp4 network)
+// [::1]/[::2]:0 (sctp6 network)
+// [::1]/127.0.0.1:0 (sctp network)
+// For an extensive list of possibilities consult listen_test.go
 //
 // Listen uses context.Background internally; to specify the context, use
 // [ListenConfig.Listen].
@@ -113,16 +119,28 @@ func (ln *SCTPListener) Accept() (net.Conn, error) {
 	return nil, nil
 }
 
-func (ln *SCTPListener) Addr() net.Addr { return ln.c.LocalAddr() }
+func (ln *SCTPListener) Addr() net.Addr {
+	if !ln.ok() {
+		return nil
+	}
+	return ln.c.LocalAddr()
+}
 
 func (ln *SCTPListener) Close() error {
 	if !ln.ok() {
-		return syscall.EINVAL
+		return os.ErrInvalid
 	}
 	if err := ln.close(); err != nil {
 		return &net.OpError{Op: "close", Net: ln.c.net, Source: nil, Addr: ln.c.laddr.Load(), Err: err}
 	}
 	return nil
+}
+
+func (ln *SCTPListener) Binder() Binder {
+	if !ln.ok() {
+		return nil
+	}
+	return ln.c
 }
 
 func (ln *SCTPListener) ok() bool { return ln != nil && ln.c != nil }
