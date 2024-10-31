@@ -25,6 +25,5 @@ type InitMsg struct {
 	MaxInitTimeout uint16
 }
 
-// TODO: add exported and internal methods for Bind and RemoveBind (BindRemove)
 // TODO: Add SCTPListener implementing net.Listener interface
 // TODO:  keep sctp.Addr instead of sctp.SCTPAddr and sctp.Conn instead of sctp.SCTPConn
