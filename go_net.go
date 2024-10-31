@@ -149,6 +149,13 @@ func supportsIPv4() bool {
 	return ipStackCaps.ipv4Enabled
 }
 
+// supportsIPv6 reports whether the platform supports IPv6 networking
+// functionality.
+func supportsIPv6() bool {
+	ipStackCaps.Once.Do(ipStackCaps.probe)
+	return ipStackCaps.ipv6Enabled
+}
+
 // probe probes IPv4, IPv6 and IPv4-mapped IPv6 communication
 // capabilities which are controlled by the IPV6_V6ONLY socket option
 // and kernel configuration.
