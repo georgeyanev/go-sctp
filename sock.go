@@ -13,10 +13,6 @@ import (
 	"unsafe"
 )
 
-type SCTPConn struct {
-	conn
-}
-
 type conn struct {
 	fd *os.File        // only trough os.File we can take advantage of the runtime network poller
 	rc syscall.RawConn // rc is used for specific SCTP read and write ops; derived from fd
@@ -48,10 +44,11 @@ func (c *conn) RemoteAddr() net.Addr { return c.raddr.Load() }
 
 // TODO: write SCTP specific functions, i.e. specifying EOF upon return, specifying input/output stream etc.
 // bool is EOR
+
 func (c *SCTPConn) ReadMsg(b []byte) (int, bool, error) { return 0, true, nil }
 func (c *SCTPConn) WriteMsg(b []byte) (int, error)      { return 0, nil }
 
-//func (c *SCTPConn) WriteMsgEor(b []byte, eor bool) (int, error) { return 0, nil }
+//func (c *Conn) WriteMsgEor(b []byte, eor bool) (int, error) { return 0, nil }
 
 func (c *conn) listen(ctx context.Context, laddr *SCTPAddr, backlog int, initMsg *InitMsg,
 	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) error {
@@ -72,7 +69,7 @@ func (c *conn) listen(ctx context.Context, laddr *SCTPAddr, backlog int, initMsg
 		return err
 	}
 	// bind
-	err = c.rawBind(laddr)
+	err = c.rawBindAdd(laddr)
 	if err != nil {
 		return err
 	}
@@ -81,19 +78,7 @@ func (c *conn) listen(ctx context.Context, laddr *SCTPAddr, backlog int, initMsg
 	if err != nil {
 		return err
 	}
-	// set local address
-	addrs, numAddrs, err := c.rawGetLocalAddrs()
-	if err != nil {
-		return err
-	}
-	localSctpAddr, err := fromSockaddrBuff(addrs, numAddrs)
-	if err != nil {
-		return err
-	}
-
-	c.setAddr(localSctpAddr, nil)
-
-	return nil
+	return c.refreshLocalAddr()
 }
 
 func (c *conn) ctrlNetwork() string {
@@ -144,17 +129,25 @@ func (c *conn) rawSetInitOpts(initMsg *InitMsg) error {
 }
 
 // rawBind binds the specified addresses or,
-// if the SCTP extension described in [RFC5061] is supported, adds the specified addresses to existing rawBind
-func (c *conn) rawBind(laddr *SCTPAddr) error {
+// if the SCTP extension described in [RFC5061] is supported, adds the specified addresses to existing bind
+func (c *conn) rawBindAdd(laddr *SCTPAddr) error {
 	const SCTP_SOCKOPT_BINDX_ADD int = 100
+	return c.rawBind(laddr, SCTP_SOCKOPT_BINDX_ADD)
+}
 
+func (c *conn) rawBindRemove(laddr *SCTPAddr) error {
+	const SCTP_SOCKOPT_BINDX_REM int = 101
+	return c.rawBind(laddr, SCTP_SOCKOPT_BINDX_REM)
+}
+
+func (c *conn) rawBind(laddr *SCTPAddr, bindMode int) error {
 	buf, err := laddr.toSockaddrBuff(c.family)
 	if err != nil {
 		return err
 	}
 	/// setsockopt
 	doErr := c.rc.Control(func(fd uintptr) {
-		err = unix.SetsockoptString(int(fd), SOL_SCTP, SCTP_SOCKOPT_BINDX_ADD, string(buf))
+		err = unix.SetsockoptString(int(fd), SOL_SCTP, bindMode, string(buf))
 	})
 	if doErr != nil {
 		return doErr
@@ -162,7 +155,7 @@ func (c *conn) rawBind(laddr *SCTPAddr) error {
 	if err != nil {
 		return os.NewSyscallError("setsockopt", err)
 	}
-	return nil
+	return c.refreshLocalAddr()
 }
 
 func (c *conn) rawListen(backlog int) error {
@@ -209,6 +202,27 @@ func (c *conn) rawGetAddrs(optName int) ([]byte, int, error) {
 
 	}
 	return rawParam.addrs[:], int(rawParam.addrNum), nil
+}
+
+func (c *conn) refreshLocalAddr() error {
+	// set local address
+	addrs, numAddrs, err := c.rawGetLocalAddrs()
+	if err != nil {
+		return err
+	}
+	localSctpAddr, err := fromSockaddrBuff(addrs, numAddrs)
+	if err != nil {
+		return err
+	}
+	c.setAddr(localSctpAddr, nil)
+	return nil
+}
+
+func (c *conn) checkValid() error {
+	if c == nil {
+		return os.ErrInvalid
+	}
+	return nil
 }
 
 // serverSocket returns a conn object that is ready for
