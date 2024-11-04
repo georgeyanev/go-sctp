@@ -19,7 +19,7 @@ type Binder interface {
 // addresses in addition to the already present ones
 // Port number should be equal to the already bound port.
 func (c *conn) BindAdd(address string) error {
-	if err := c.checkValid(); err != nil {
+	if err := c.ok(); err != nil {
 		return err
 	}
 	laddr, err := resolveSCTPAddr("bindx", c.net, address)
@@ -35,7 +35,7 @@ func (c *conn) BindAdd(address string) error {
 }
 
 func (c *conn) BindAddSCTP(laddr *SCTPAddr) error {
-	if err := c.checkValid(); err != nil {
+	if err := c.ok(); err != nil {
 		return err
 	}
 	return c.rawBindAdd(laddr)
@@ -45,7 +45,7 @@ func (c *conn) BindAddSCTP(laddr *SCTPAddr) error {
 // If this is a listening socket, new associations accepted will not be associated with these addresses
 // Port number should be equal to the already bound port.
 func (c *conn) BindRemove(address string) error {
-	if err := c.checkValid(); err != nil {
+	if err := c.ok(); err != nil {
 		return err
 	}
 	laddr, err := resolveSCTPAddr("bindx", c.net, address)
@@ -61,7 +61,7 @@ func (c *conn) BindRemove(address string) error {
 }
 
 func (c *conn) BindRemoveSCTP(laddr *SCTPAddr) error {
-	if err := c.checkValid(); err != nil {
+	if err := c.ok(); err != nil {
 		return err
 	}
 	return c.rawBindRemove(laddr)
