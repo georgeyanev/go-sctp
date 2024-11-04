@@ -3,7 +3,6 @@ package sctp
 import (
 	"context"
 	"net"
-	"os"
 	"syscall"
 )
 
@@ -26,8 +25,8 @@ type ListenConfig struct {
 	// provides information for initializing new SCTP associations
 	InitMsg InitMsg
 
-	// heartbeats are enabled by default and the interval between them are defined in `net.sctp.hb_interval`
-	// kernel parameter which is 30 seconds by default
+	// heartbeats are enabled by default and the interval between them are defined
+	// in `net.sctp.hb_interval` kernel parameter which is 30 seconds by default.
 	// TO DO: make an option to disable them? Disabling means disable only sending heartbeats
 
 }
@@ -114,9 +113,22 @@ func listenSCTP(ctx context.Context, network string, laddr *SCTPAddr, lc *Listen
 	return &SCTPListener{c: c, lc: lc}, nil
 }
 
+// Accept implements the Accept method in the [Listener] interface; it
+// waits for the next call and returns a generic [Conn].
 func (ln *SCTPListener) Accept() (net.Conn, error) {
-	// TODO:
-	return nil, nil
+	return ln.AcceptSCTP()
+}
+
+// AcceptSCTP accepts the next incoming call and returns the new connection.
+func (ln *SCTPListener) AcceptSCTP() (*SCTPConn, error) {
+	if !ln.ok() {
+		return nil, syscall.EINVAL
+	}
+	c, err := ln.accept()
+	if err != nil {
+		return nil, &net.OpError{Op: "accept", Net: ln.c.net, Source: nil, Addr: ln.c.laddr.Load(), Err: err}
+	}
+	return c, nil
 }
 
 func (ln *SCTPListener) Addr() net.Addr {
@@ -128,7 +140,7 @@ func (ln *SCTPListener) Addr() net.Addr {
 
 func (ln *SCTPListener) Close() error {
 	if !ln.ok() {
-		return os.ErrInvalid
+		return errEINVAL
 	}
 	if err := ln.close(); err != nil {
 		return &net.OpError{Op: "close", Net: ln.c.net, Source: nil, Addr: ln.c.laddr.Load(), Err: err}
@@ -147,4 +159,12 @@ func (ln *SCTPListener) ok() bool { return ln != nil && ln.c != nil }
 
 func (ln *SCTPListener) close() error {
 	return ln.c.Close()
+}
+
+func (ln *SCTPListener) accept() (*SCTPConn, error) {
+	c, err := ln.c.accept()
+	if err != nil {
+		return nil, err
+	}
+	return newSCTPConn(c), nil
 }

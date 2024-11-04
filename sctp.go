@@ -3,12 +3,7 @@
 package sctp
 
 const (
-	SCTP_INITMSG = 2
-
 	SOL_SCTP = 132
-
-	// SCTP_ADDRS_BUF_SIZE is the allocated buffer for system calls returning local/remote sctp multi-homed addresses
-	SCTP_ADDRS_BUF_SIZE = 4096 //enough for most cases
 )
 
 // InitMsg structure provides information for initializing new SCTP associations
@@ -25,5 +20,4 @@ type InitMsg struct {
 	MaxInitTimeout uint16
 }
 
-// TODO: Add SCTPListener implementing net.Listener interface
-// TODO:  keep sctp.Addr instead of sctp.SCTPAddr and sctp.Conn instead of sctp.SCTPConn
+// TODO: add more listener test (for control func and others (from net.listen_tests.go))

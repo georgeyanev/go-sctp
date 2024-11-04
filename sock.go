@@ -97,6 +97,71 @@ func (c *conn) setAddr(laddr, raddr *SCTPAddr) {
 	c.raddr.Store(raddr)
 }
 
+func (c *conn) refreshLocalAddr() error {
+	// local
+	addrs, numAddrs, err := c.rawGetLocalAddrs()
+	if err != nil {
+		return err
+	}
+	localSctpAddr, err := fromSockaddrBuff(addrs, numAddrs)
+	if err != nil {
+		return err
+	}
+	// set local
+	c.setAddr(localSctpAddr, nil)
+	return nil
+}
+
+func (c *conn) refreshAddrs() error {
+	// local
+	laddr, numAddrs, err := c.rawGetLocalAddrs()
+	if err != nil {
+		return err
+	}
+	localSctpAddr, err := fromSockaddrBuff(laddr, numAddrs)
+	if err != nil {
+		return err
+	}
+	// remote
+	raddr, numAddrs, err := c.rawGetRemoteAddrs()
+	if err != nil {
+		return err
+	}
+	remoteSctpAddr, err := fromSockaddrBuff(raddr, numAddrs)
+	if err != nil {
+		return err
+	}
+	// set both
+	c.setAddr(localSctpAddr, remoteSctpAddr)
+	return nil
+}
+
+func (c *conn) ok() error {
+	if c == nil {
+		return errEINVAL // or os.ErrInvalid ?
+	}
+	return nil
+}
+
+func (c *conn) accept() (*conn, error) {
+	nfd, err := c.rawAccept()
+	if err != nil {
+		return nil, err
+	}
+
+	nc, err := newConn(nfd, c.family, c.net)
+	if err != nil {
+		return nil, err
+	}
+
+	// get local and remote addresses
+	if err = nc.refreshAddrs(); err != nil {
+		_ = nc.Close()
+		return nil, err
+	}
+	return nc, nil
+}
+
 func (c *conn) rawSetDefaultListenerSockopts() error {
 	var err error
 	doErr := c.rc.Control(func(fd uintptr) {
@@ -113,6 +178,8 @@ func (c *conn) rawSetDefaultListenerSockopts() error {
 
 // sets init options with setsockopt
 func (c *conn) rawSetInitOpts(initMsg *InitMsg) error {
+	const SCTP_INITMSG = 2
+
 	var err error
 	initMsgBuf := unsafe.Slice((*byte)(unsafe.Pointer(initMsg)), unsafe.Sizeof(*initMsg))
 	/// setsockopt
@@ -182,6 +249,9 @@ func (c *conn) rawGetRemoteAddrs() ([]byte, int, error) {
 }
 
 func (c *conn) rawGetAddrs(optName int) ([]byte, int, error) {
+	// SCTP_ADDRS_BUF_SIZE is the allocated buffer for system calls returning local/remote sctp multi-homed addresses
+	const SCTP_ADDRS_BUF_SIZE int = 4096 //enough for most cases
+
 	type rawSctpAddrs struct {
 		assocId int32
 		addrNum uint32
@@ -204,25 +274,84 @@ func (c *conn) rawGetAddrs(optName int) ([]byte, int, error) {
 	return rawParam.addrs[:], int(rawParam.addrNum), nil
 }
 
-func (c *conn) refreshLocalAddr() error {
-	// set local address
-	addrs, numAddrs, err := c.rawGetLocalAddrs()
-	if err != nil {
-		return err
+// The tcp version of raw accept (i.e. poll.FD.Accept) is using readLock and prepareRead of the network poller.
+// Our syscall.RawConn which is an instance of os.rawConn uses these functions in its Read func, but not in its Control func.
+// Thus, we call the socket level accept function wrapped by a Read call and not a Control call.
+func (c *conn) rawAccept() (int, error) {
+	var err error
+	var ns int
+	var errcall string
+	doErr := c.rc.Read(func(fd uintptr) bool {
+		for {
+			ns, _, errcall, err = accept(int(fd))
+			if err == nil {
+				return true
+			}
+			switch err {
+			case syscall.EINTR:
+				continue
+			case syscall.EAGAIN:
+				// this causes the wrapper to call waitRead
+				// see the source code for internal/poll.FD.RawRead
+				return false
+			case syscall.ECONNABORTED:
+				// This means that a socket on the listen
+				// queue was closed before we Accept()ed it;
+				// it's a silly error, so try again.
+				continue
+			}
+			return true // err is set
+		}
+	})
+	if doErr != nil {
+		return -1, doErr
 	}
-	localSctpAddr, err := fromSockaddrBuff(addrs, numAddrs)
 	if err != nil {
-		return err
+		return -1, os.NewSyscallError(errcall, err)
 	}
-	c.setAddr(localSctpAddr, nil)
+	return ns, nil
+}
+
+func (c *conn) rawSetNoDelay(b bool) error {
+	const SCTP_NODELAY int = 3
+
+	var err error
+	doErr := c.rc.Control(func(fd uintptr) {
+		err = unix.SetsockoptInt(int(fd), unix.IPPROTO_SCTP, SCTP_NODELAY, boolint(b))
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
 	return nil
 }
 
-func (c *conn) checkValid() error {
-	if c == nil {
-		return os.ErrInvalid
+func newConn(fd, family int, net string) (*conn, error) {
+	f := os.NewFile(uintptr(fd), "")
+	if f == nil {
+		_ = unix.Close(fd)
+		return nil, errors.New("os.NewFile returned nil")
 	}
-	return nil
+	rc, err := f.SyscallConn()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	c := &conn{fd: f, rc: rc, family: family, net: net}
+	return c, nil
+}
+
+func newSCTPConn(c *conn) *SCTPConn {
+	_ = c.rawSetNoDelay(true)
+
+	// TO DO: set heartbeat disable here or heartbeat interval
+	return &SCTPConn{c}
+}
+
+func setNoDelay(c *conn, b bool) {
+
 }
 
 // serverSocket returns a conn object that is ready for
@@ -235,21 +364,17 @@ func serverSocket(ctx context.Context, network string, laddr *SCTPAddr, initMsg 
 	if err != nil {
 		return nil, err
 	}
+
 	if err = setDefaultSockopts(fd, family, ipv6only); err != nil {
 		_ = unix.Close(fd)
 		return nil, err
 	}
-	f := os.NewFile(uintptr(fd), "")
-	if f == nil {
-		_ = unix.Close(fd)
-		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr, Err: errors.New("os.NewFile returned nil")}
-	}
-	rc, err := f.SyscallConn()
+
+	c, err := newConn(fd, family, network)
 	if err != nil {
 		return nil, err
 	}
 
-	c := &conn{fd: f, rc: rc, family: family, net: network}
 	if err = c.listen(ctx, laddr, listenerBacklog(), initMsg, ctrlCtxFn); err != nil {
 		_ = c.Close()
 		return nil, err
