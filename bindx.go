@@ -22,7 +22,7 @@ func (c *conn) BindAdd(address string) error {
 	if err := c.ok(); err != nil {
 		return err
 	}
-	laddr, err := resolveSCTPAddr("bindx", c.net, address)
+	laddr, err := resolveSCTPAddr("bindx", c.net, address, nil)
 	if err != nil {
 		return &net.OpError{Op: "bindx", Net: c.net, Source: nil, Addr: c.LocalAddr(),
 			Err: errors.New("add address: " + address + ": " + err.Error())}
@@ -48,7 +48,7 @@ func (c *conn) BindRemove(address string) error {
 	if err := c.ok(); err != nil {
 		return err
 	}
-	laddr, err := resolveSCTPAddr("bindx", c.net, address)
+	laddr, err := resolveSCTPAddr("bindx", c.net, address, nil)
 	if err != nil {
 		return &net.OpError{Op: "bindx", Net: c.net, Source: nil, Addr: c.LocalAddr(),
 			Err: errors.New("remove address: " + address + ": " + err.Error())}
