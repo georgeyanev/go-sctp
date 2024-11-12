@@ -1,11 +1,15 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the GO_LICENSE file.
+
+// This file contains test code from go's net package, tweaked for SCTP where necessary.
+
 package sctp
 
 import (
-	"errors"
 	"fmt"
 	"golang.org/x/sys/unix"
 	"net"
-	"strings"
 	"syscall"
 	"testing"
 )
@@ -266,14 +270,6 @@ func checkSecondListener(network, address string, err error) error {
 	return nil
 }
 
-func (ln *SCTPListener) port() string {
-	i := strings.LastIndexByte(ln.Addr().String(), ':')
-	if i < 0 {
-		return ""
-	}
-	return ln.Addr().String()[i+1:]
-}
-
 func checkDualStackSecondListener(network, address string, err, xerr error) error {
 	switch network {
 	case "sctp", "sctp4", "sctp6":
@@ -284,35 +280,4 @@ func checkDualStackSecondListener(network, address string, err, xerr error) erro
 		return net.UnknownNetworkError(network)
 	}
 	return nil
-}
-
-func newDualStackListener() (lns []*SCTPListener, err error) {
-	var args = []struct {
-		network string
-		SCTPAddr
-	}{
-		{"sctp4", SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IPv4(127, 0, 0, 1)}}}},
-		{"sctp6", SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IPv6loopback}}}},
-	}
-	for i := 0; i < 64; i++ {
-		var port int
-		var lns []*SCTPListener
-		for _, arg := range args {
-			arg.SCTPAddr.Port = port
-			ln, err := ListenSCTP(arg.network, &arg.SCTPAddr)
-			if err != nil {
-				continue
-			}
-			port = ln.Addr().(*SCTPAddr).Port
-			lns = append(lns, ln)
-		}
-		if len(lns) != len(args) {
-			for _, ln := range lns {
-				_ = ln.Close()
-			}
-			continue
-		}
-		return lns, nil
-	}
-	return nil, errors.New("no dualstack available")
 }
