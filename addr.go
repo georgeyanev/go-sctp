@@ -47,16 +47,20 @@ func (a *SCTPAddr) String() string {
 // Wildcard addresses cannot be used in combination with non-wildcard addresses.
 // A single address may be specified as a wildcard address.
 func (a *SCTPAddr) isWildcard() bool {
-	if a == nil || len(a.IPAddrs) == 0 {
+	if a.isEmpty() {
 		return true
 	}
 	if len(a.IPAddrs) > 1 {
 		return false
 	}
-	if len(a.IPAddrs[0].IP) == 0 {
+	return a.IPAddrs[0].IP.IsUnspecified()
+}
+
+func (a *SCTPAddr) isEmpty() bool {
+	if a == nil || len(a.IPAddrs) == 0 || (len(a.IPAddrs) == 1 && len(a.IPAddrs[0].IP) == 0) {
 		return true
 	}
-	return a.IPAddrs[0].IP.IsUnspecified()
+	return false
 }
 
 func (a *SCTPAddr) family() int {
@@ -69,6 +73,11 @@ func (a *SCTPAddr) family() int {
 		}
 	}
 	return unix.AF_INET
+}
+
+func (a *SCTPAddr) matchAddrFamily(x *SCTPAddr) bool {
+	return a.family() == unix.AF_INET && x.family() == unix.AF_INET ||
+		a.family() == unix.AF_INET6 && x.family() == unix.AF_INET6
 }
 
 func (a *SCTPAddr) opAddr() net.Addr {
@@ -85,7 +94,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 	}
 	var buf []byte
 	switch {
-	case family == unix.AF_INET && a.isWildcard():
+	case family == unix.AF_INET && a.isEmpty():
 		sa, err := ipToSockaddrInet4(nil, port)
 		if err != nil {
 			return nil, err
@@ -96,7 +105,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 		}
 		buf = append(buf, saBuf...)
 
-	case family == unix.AF_INET6 && a.isWildcard():
+	case family == unix.AF_INET6 && a.isEmpty():
 		sa, err := ipToSockaddrInet6(nil, port, "")
 		if err != nil {
 			return nil, err
@@ -138,12 +147,13 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 	return buf, nil
 }
 
-func resolveSCTPAddr(op, network, addr string) (*SCTPAddr, error) {
+func resolveSCTPAddr(op, network, addr string, hint *SCTPAddr) (*SCTPAddr, error) {
 	switch network {
 	case "sctp", "sctp4", "sctp6":
 	default:
 		return nil, net.UnknownNetworkError(network)
 	}
+	addr = strings.TrimSpace(addr)
 	if op == "dial" && addr == "" {
 		return nil, errors.New("missing address")
 	}
@@ -169,7 +179,21 @@ func resolveSCTPAddr(op, network, addr string) (*SCTPAddr, error) {
 	if err != nil {
 		return nil, err
 	}
+	if op == "dial" && tcpAddr.Port == 0 {
+		return nil, &net.AddrError{Err: "missing port in address", Addr: addr}
+	}
+
 	ipAddrs = append(ipAddrs, net.IPAddr{IP: tcpAddr.IP, Zone: tcpAddr.Zone})
+
+	resAddr := &SCTPAddr{IPAddrs: ipAddrs, Port: tcpAddr.Port}
+	if op != "dial" || hint == nil {
+		return resAddr, err
+	}
+
+	if !hint.isWildcard() && !resAddr.isWildcard() && !hint.matchAddrFamily(resAddr) {
+		return nil, &net.AddrError{Err: errNoSuitableAddress.Error(), Addr: hint.String()}
+	}
+
 	return &SCTPAddr{IPAddrs: ipAddrs, Port: tcpAddr.Port}, nil
 }
 
