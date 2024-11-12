@@ -2,8 +2,10 @@ package sctp
 
 import (
 	"context"
+	"log"
 	"net"
 	"syscall"
+	"time"
 )
 
 type SCTPListener struct {
@@ -11,8 +13,8 @@ type SCTPListener struct {
 	lc *ListenConfig
 }
 
-// ListenConfig TODO: possibly add more fields (specific to SCTP)
 // ListenConfig contains options for listening to an address.
+// ListenConfig TO DO: possibly add more fields (specific to SCTP)
 type ListenConfig struct {
 	// If Control is not nil, it is called after creating the network
 	// connection but before binding it to the operating system.
@@ -25,7 +27,7 @@ type ListenConfig struct {
 	// provides information for initializing new SCTP associations
 	InitMsg InitMsg
 
-	// heartbeats are enabled by default and the interval between them are defined
+	// SCTP heartbeats are enabled by default and the interval between them are defined
 	// in `net.sctp.hb_interval` kernel parameter which is 30 seconds by default.
 	// TO DO: make an option to disable them? Disabling means disable only sending heartbeats
 
@@ -61,8 +63,6 @@ func Listen(network, address string) (net.Listener, error) {
 
 // ListenSCTP acts like [Listen] for SCTP networks.
 //
-// # The network must be a SCTP network name
-//
 // If the IP field of laddr is nil or an unspecified IP address,
 // ListenSCTP listens on all available IP addresses of the local system.
 // If the Port field of laddr is 0, a port number is automatically
@@ -74,7 +74,7 @@ func ListenSCTP(network string, laddr *SCTPAddr) (*SCTPListener, error) {
 
 func (lc *ListenConfig) Listen(ctx context.Context, network, address string) (net.Listener, error) {
 	// resolve the address
-	laddr, err := resolveSCTPAddr("listen", network, address)
+	laddr, err := resolveSCTPAddr("listen", network, address, nil)
 	if err != nil {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: nil, Err: err}
 	}
@@ -121,12 +121,13 @@ func (ln *SCTPListener) Accept() (net.Conn, error) {
 
 // AcceptSCTP accepts the next incoming call and returns the new connection.
 func (ln *SCTPListener) AcceptSCTP() (*SCTPConn, error) {
+	log.Printf("gId %d: func ln.AcceptSCTP", getGoroutineID()) // TODO: remove()
 	if !ln.ok() {
 		return nil, syscall.EINVAL
 	}
 	c, err := ln.accept()
 	if err != nil {
-		return nil, &net.OpError{Op: "accept", Net: ln.c.net, Source: nil, Addr: ln.c.laddr.Load(), Err: err}
+		return nil, &net.OpError{Op: "accept", Net: ln.c.net, Source: nil, Addr: ln.c.laddr.Load().opAddr(), Err: err}
 	}
 	return c, nil
 }
@@ -143,7 +144,7 @@ func (ln *SCTPListener) Close() error {
 		return errEINVAL
 	}
 	if err := ln.close(); err != nil {
-		return &net.OpError{Op: "close", Net: ln.c.net, Source: nil, Addr: ln.c.laddr.Load(), Err: err}
+		return &net.OpError{Op: "close", Net: ln.c.net, Source: nil, Addr: ln.c.laddr.Load().opAddr(), Err: err}
 	}
 	return nil
 }
@@ -155,6 +156,15 @@ func (ln *SCTPListener) Binder() Binder {
 	return ln.c
 }
 
+// SetDeadline sets the deadline associated with the listener.
+// A zero time value disables the deadline.
+func (l *SCTPListener) SetDeadline(t time.Time) error {
+	if !l.ok() {
+		return syscall.EINVAL
+	}
+	return l.c.SetDeadline(t)
+}
+
 func (ln *SCTPListener) ok() bool { return ln != nil && ln.c != nil }
 
 func (ln *SCTPListener) close() error {
@@ -162,6 +172,7 @@ func (ln *SCTPListener) close() error {
 }
 
 func (ln *SCTPListener) accept() (*SCTPConn, error) {
+	log.Printf("gId %d: func ln.accept", getGoroutineID())
 	c, err := ln.c.accept()
 	if err != nil {
 		return nil, err
