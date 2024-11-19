@@ -38,7 +38,17 @@ func (c *conn) BindAddSCTP(laddr *SCTPAddr) error {
 	if err := c.ok(); err != nil {
 		return err
 	}
-	return c.rawBindAdd(laddr)
+	// bind
+	if err := c.rawBindAdd(laddr); err != nil {
+		return err
+	}
+	// set local address
+	la, err := c.getLocalAddr()
+	if err != nil {
+		return err
+	}
+	c.laddr.Store(la)
+	return nil
 }
 
 // BindRemove remove some addresses with which a bound socket is associated.
@@ -64,5 +74,15 @@ func (c *conn) BindRemoveSCTP(laddr *SCTPAddr) error {
 	if err := c.ok(); err != nil {
 		return err
 	}
-	return c.rawBindRemove(laddr)
+	// bind
+	if err := c.rawBindRemove(laddr); err != nil {
+		return err
+	}
+	// set local address
+	la, err := c.getLocalAddr()
+	if err != nil {
+		return err
+	}
+	c.laddr.Store(la)
+	return nil
 }
