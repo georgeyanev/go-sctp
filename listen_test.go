@@ -9,9 +9,11 @@ package sctp
 import (
 	"fmt"
 	"golang.org/x/sys/unix"
+	"log"
 	"net"
 	"syscall"
 	"testing"
+	"time"
 )
 
 var sctpListenerTests = []struct {
@@ -33,7 +35,7 @@ var sctpListenerTests = []struct {
 	{"sctp6", "[::1%nazone]"},
 	{"sctp6", "[::]"},
 	{"sctp6", "[::1]"},
-	//{"sctp6", "[::1]/[fe80::1%lo]/[fe80::2%lo]"}, // additional addresses needed
+	//{"sctp6", "[::1]/[fe80::1%lo]/[fe80::2%lo]"}, // additional local ipv6 addresses needed
 	{"sctp", "0.0.0.0"},
 	{"sctp", ""},
 	{"sctp", "[::ffff:0.0.0.0]"},
@@ -169,7 +171,7 @@ var dualStackSCTPListenerTests = []struct {
 // TestDualStackTCPListener tests both single and double listen
 // to a test listener with various address families, different
 // listening address and same port.
-func TestDualStackTCPListener(t *testing.T) {
+func TestDualStackSCTPListener(t *testing.T) {
 	if !supportsIPv4() || !supportsIPv6() {
 		t.Skip("both IPv4 and IPv6 are required")
 	}
@@ -280,4 +282,54 @@ func checkDualStackSecondListener(network, address string, err, xerr error) erro
 		return net.UnknownNetworkError(network)
 	}
 	return nil
+}
+
+func TestWildWildcardSCTPListener(t *testing.T) {
+	if ln, err := Listen("sctp", ""); err == nil {
+		ln.Close()
+	} else {
+		log.Fatal(err)
+	}
+	if ln, err := ListenSCTP("sctp", nil); err == nil {
+		ln.Close()
+	} else {
+		log.Fatal(err)
+	}
+}
+
+func TestClosingSCTPListener(t *testing.T) {
+	ln := newLocalListenerSCTP(t, "sctp")
+	addr := ln.Addr()
+
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
+
+	// Let the goroutine start. We don't sleep long: if the
+	// goroutine doesn't start, the test will pass without really
+	// testing anything, which is OK.
+	time.Sleep(time.Millisecond)
+
+	ln.Close()
+
+	ln2, err := Listen("sctp", addr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln2.Close()
+}
+
+func TestListenConfigControlSCTP(t *testing.T) {
+	t.Run("StreamListen", func(t *testing.T) {
+		for _, network := range []string{"sctp", "sctp4", "sctp6"} {
+			ln := newLocalListenerSCTP(t, network, &ListenConfig{Control: controlOnConnSetup})
+			ln.Close()
+		}
+	})
 }

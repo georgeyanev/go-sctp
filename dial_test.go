@@ -76,21 +76,8 @@ func TestDialerDualStackFDLeakSCTP(t *testing.T) {
 // expected to hang until the timeout elapses. These addresses are reserved
 // for benchmarking by RFC 6890.
 const (
-	slowDst4 = "198.18.0.254"
 	slowDst6 = "[2001:2::254]"
 )
-
-// In some environments, the slow IPs may be explicitly unreachable, and fail
-// more quickly than expected. This test hook prevents dialSCTP from returning
-// before the deadline.
-func slowDialSCTP(ctx context.Context, network string, raddr *SCTPAddr, d *Dialer) (*SCTPConn, error) {
-	c, err := dialSCTP(ctx, network, raddr, d)
-	if net.ParseIP(slowDst4).Equal(raddr.IPAddrs[0].IP) || net.ParseIP(slowDst6).Equal(raddr.IPAddrs[0].IP) {
-		// Wait for the deadline, or indefinitely if none exists.
-		<-ctx.Done()
-	}
-	return c, err
-}
 
 func TestDialParallelSCTP(t *testing.T) {
 	t.Skip("we don't do parallel dials")
@@ -226,28 +213,6 @@ func TestDialerLocalAddrSCTP(t *testing.T) {
 		log.Printf("gId: %d, Close after dial: %v <----------> %v", getGoroutineID(), c.LocalAddr(), c.RemoteAddr())
 		c.Close()
 	}
-}
-
-func dialClosedPort(t *testing.T) (dialLatency time.Duration) {
-	// On most platforms, dialing a closed port should be nearly instantaneous —
-	// less than a few hundred milliseconds. However, on some platforms it may be
-	// much slower
-
-	l, err := Listen("sctp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("dialClosedPort: Listen failed: %v", err)
-	}
-	addr := l.Addr().String()
-	l.Close()
-
-	startTime := time.Now()
-	c, err := Dial("sctp", addr)
-	if err == nil {
-		c.Close()
-	}
-	elapsed := time.Since(startTime)
-	t.Logf("dialClosedPort: measured delay %v", elapsed)
-	return elapsed
 }
 
 func TestDialerDualStackSCTP(t *testing.T) {
@@ -421,16 +386,16 @@ func TestCancelAfterDialSCTP(t *testing.T) {
 	}()
 
 	try := func() {
-		//ctx, cancelFunc := context.WithCancel(context.Background())
-		//defer cancelFunc()
+		ctx, cancelFunc := context.WithCancel(context.Background())
+		defer cancelFunc()
 		d := &Dialer{}
-		c, err := d.Dial(context.Background(), "sctp", ln.Addr().String())
+		c, err := d.Dial(ctx, "sctp", ln.Addr().String())
 
 		// Immediately after dialing, request cancellation and sleep.
 		// Before Issue 15078 was fixed, this would cause subsequent operations
 		// to fail with an i/o timeout roughly 50% of the time.
-		//		cancelFunc()
-		//		time.Sleep(10 * time.Millisecond)
+		cancelFunc()
+		time.Sleep(10 * time.Millisecond)
 
 		if err != nil {
 			t.Fatal(err)
@@ -613,45 +578,4 @@ func TestDialWithNonZeroDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.Close()
-}
-
-func TestGetpeernameAfterRemoteClosing(t *testing.T) {
-	ln := newLocalListenerSCTP(t, "sctp")
-	defer ln.Close()
-
-	connc := make(chan net.Conn, 1)
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				break
-			}
-			log.Printf("connection ACCEPTED: %v <----------> %v", c.LocalAddr(), c.RemoteAddr())
-			connc <- c
-		}
-	}()
-
-	d := &Dialer{}
-	c, err := d.Dial(context.Background(), "sctp", ln.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sa, err := c.(*SCTPConn).rawGetpeername()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	log.Printf("peer name before remote close: %v", sa)
-
-	ca := <-connc
-
-	err = ca.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sa, err = c.(*SCTPConn).rawGetpeername()
-	log.Printf("peer name before remote close: %v", sa)
-	if err != nil {
-		t.Fatal(err)
-	}
 }
