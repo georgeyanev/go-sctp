@@ -2,10 +2,12 @@ package sctp
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"sync"
 	"testing"
+	"time"
 )
 
 func newLocalListener(t testing.TB, network string, lcOpt ...*net.ListenConfig) net.Listener {
@@ -98,4 +100,48 @@ func newLocalServer(t testing.TB, network string) *localServer {
 	t.Helper()
 	ln := newLocalListener(t, network)
 	return &localServer{Listener: ln, done: make(chan bool)}
+}
+
+func (ls *localServer) transponder(ln net.Listener, ch chan<- error) {
+	defer close(ch)
+
+	switch ln := ln.(type) {
+	case *net.TCPListener:
+		ln.SetDeadline(time.Now().Add(someTimeout))
+	}
+	c, err := ln.Accept()
+	if err != nil {
+		if perr := parseAcceptError(err); perr != nil {
+			ch <- perr
+		}
+		ch <- err
+		return
+	}
+	ls.cl = append(ls.cl, c)
+
+	network := ln.Addr().Network()
+	if c.LocalAddr().Network() != network || c.RemoteAddr().Network() != network {
+		ch <- fmt.Errorf("got %v->%v; expected %v->%v", c.LocalAddr().Network(), c.RemoteAddr().Network(), network, network)
+		return
+	}
+	c.SetDeadline(time.Now().Add(someTimeout))
+	c.SetReadDeadline(time.Now().Add(someTimeout))
+	c.SetWriteDeadline(time.Now().Add(someTimeout))
+
+	b := make([]byte, 256)
+	n, err := c.Read(b)
+	if err != nil {
+		if perr := parseReadError(err); perr != nil {
+			ch <- perr
+		}
+		ch <- err
+		return
+	}
+	if _, err := c.Write(b[:n]); err != nil {
+		if perr := parseWriteError(err); perr != nil {
+			ch <- perr
+		}
+		ch <- err
+		return
+	}
 }

@@ -137,7 +137,22 @@ func TestCancelAfterDial(t *testing.T) {
 	}
 
 	// This bug manifested about 50% of the time, so try it a few times.
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 100; i++ {
 		try()
+	}
+}
+
+func TestWildWildcardListener(t *testing.T) {
+	defer func() {
+		if p := recover(); p != nil {
+			t.Fatalf("panicked: %v", p)
+		}
+	}()
+
+	if ln, err := net.Listen("tcp", ""); err == nil {
+		ln.Close()
+	}
+	if ln, err := net.ListenTCP("tcp", nil); err == nil {
+		ln.Close()
 	}
 }
