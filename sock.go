@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -60,7 +59,7 @@ func (c *conn) listen(ctx context.Context, laddr *SCTPAddr, backlog int, initMsg
 		return err
 	}
 	if ctrlCtxFn != nil {
-		if err = ctrlCtxFn(ctx, c.ctrlNetwork(), laddr.String(), c.rc); err != nil {
+		if err = ctrlCtxFn(ctx, ctrlNetwork(c.family, c.net), laddr.String(), c.rc); err != nil {
 			return err
 		}
 	}
@@ -80,94 +79,6 @@ func (c *conn) listen(ctx context.Context, laddr *SCTPAddr, backlog int, initMsg
 	la, _ := c.getLocalAddr()
 	c.setAddr(la, nil)
 	return nil
-}
-
-func (c *conn) dial(ctx context.Context, laddr *SCTPAddr, raddr *SCTPAddr, msg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) error {
-
-	log.Printf("gId: %d, func c.dial", getGoroutineID())
-
-	var err error
-	if ctrlCtxFn != nil {
-		if err = ctrlCtxFn(ctx, c.ctrlNetwork(), raddr.String(), c.rc); err != nil {
-			return err
-		}
-	}
-
-	// if local address is not null set reuse address option and bind it
-	if laddr != nil {
-		if err = c.rawSetDefaultListenerSockopts(); err != nil {
-			return err
-		}
-		// bind
-		if err = c.rawBindAdd(laddr); err != nil {
-			return err
-		}
-	}
-	// connect
-	if err = c.connect(ctx, raddr); err != nil {
-		return err
-	}
-
-	// set local and remote addresses
-	var la, ra *SCTPAddr
-	la, _ = c.getLocalAddr()
-	ra, _ = c.getRemoteAddr()
-	c.setAddr(la, ra)
-	return nil
-}
-
-func (c *conn) rawConnect(raddr *SCTPAddr) error {
-	// In one-to-one SCTP mode (SOCK_STREAM socket type) we don't want the
-	// association-id so it is safe to use the "old" connect api.
-	// Moreover, the association-id can be provided only if the socket is in
-	// blocking mode which is not our case.
-	const SCTP_SOCKOPT_CONNECTX_OLD = 107
-
-	log.Printf("gId: %d, func rawConnect", getGoroutineID())
-
-	// accommodate wildcard addresses to point to local system
-	var finalRaddr *SCTPAddr
-	if raddr.isWildcard() && c.family == syscall.AF_INET {
-		finalRaddr = &SCTPAddr{
-			Port:    raddr.Port,
-			IPAddrs: []net.IPAddr{{IP: net.IPv4(127, 0, 0, 1)}},
-		}
-	} else if raddr.isWildcard() && c.family == syscall.AF_INET6 {
-		finalRaddr = &SCTPAddr{
-			Port:    raddr.Port,
-			IPAddrs: []net.IPAddr{{IP: net.IPv6loopback}},
-		}
-	} else {
-		finalRaddr = raddr
-	}
-
-	buf, err := finalRaddr.toSockaddrBuff(c.family)
-	if err != nil {
-		return err
-	}
-	// setsockopt
-	doErr := c.rc.Control(func(fd uintptr) {
-		err = unix.SetsockoptString(int(fd), SOL_SCTP, SCTP_SOCKOPT_CONNECTX_OLD, string(buf))
-	})
-	if doErr != nil {
-		return doErr
-	}
-	if err != nil {
-		return err // we can not wrap here because we switch over this value
-	}
-	return nil
-}
-
-func (c *conn) ctrlNetwork() string {
-	switch c.net[len(c.net)-1] {
-	case '4', '6':
-		return c.net
-	}
-	if c.family == syscall.AF_INET {
-		return c.net + "4"
-	}
-	return c.net + "6"
 }
 
 func (c *conn) setAddr(laddr, raddr *SCTPAddr) {
@@ -264,29 +175,23 @@ func (c *conn) rawSetInitOpts(initMsg *InitMsg) error {
 // rawBind binds the specified addresses or,
 // if the SCTP extension described in [RFC5061] is supported, adds the specified addresses to existing bind
 func (c *conn) rawBindAdd(laddr *SCTPAddr) error {
-	const SCTP_SOCKOPT_BINDX_ADD int = 100
 	return c.rawBind(laddr, SCTP_SOCKOPT_BINDX_ADD)
 }
 
 func (c *conn) rawBindRemove(laddr *SCTPAddr) error {
-	const SCTP_SOCKOPT_BINDX_REM int = 101
 	return c.rawBind(laddr, SCTP_SOCKOPT_BINDX_REM)
 }
 
 func (c *conn) rawBind(laddr *SCTPAddr, bindMode int) error {
-	buf, err := laddr.toSockaddrBuff(c.family)
-	if err != nil {
-		return err
-	}
-	/// setsockopt
+	var err error
 	doErr := c.rc.Control(func(fd uintptr) {
-		err = unix.SetsockoptString(int(fd), SOL_SCTP, bindMode, string(buf))
+		err = bindx(int(fd), c.family, bindMode, laddr)
 	})
 	if doErr != nil {
 		return doErr
 	}
 	if err != nil {
-		return os.NewSyscallError("bindx", err)
+		return err
 	}
 	return nil
 }
@@ -401,21 +306,6 @@ func (c *conn) rawSetNoDelay(b bool) error {
 	return nil
 }
 
-func (c *conn) rawGetpeername() (unix.Sockaddr, error) {
-	var err error
-	var rsa unix.Sockaddr
-	doErr := c.rc.Control(func(fd uintptr) {
-		rsa, err = unix.Getpeername(int(fd))
-	})
-	if doErr != nil {
-		return nil, doErr
-	}
-	if err != nil {
-		return nil, os.NewSyscallError("getpeername", err)
-	}
-	return rsa, nil
-}
-
 func newConn(fd, family int, net string) (*conn, error) {
 	f := os.NewFile(uintptr(fd), "")
 	if f == nil {
@@ -436,90 +326,4 @@ func newSCTPConn(c *conn) *SCTPConn {
 
 	// TO DO: set heartbeat disable here or heartbeat interval
 	return &SCTPConn{c}
-}
-
-// serverSocket returns a listening conn object that is ready for
-// asynchronous I/O using the network poller
-func serverSocket(ctx context.Context, network string, laddr *SCTPAddr, initMsg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (*conn, error) {
-
-	log.Printf("gId: %d,func serverSocket", getGoroutineID())
-
-	family, ipv6only := favoriteAddrFamily(network, laddr, nil, "listen")
-	fd, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = setDefaultSockopts(fd, family, ipv6only); err != nil {
-		_ = unix.Close(fd)
-		return nil, err
-	}
-
-	c, err := newConn(fd, family, network)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = c.listen(ctx, laddr, listenerBacklog(), initMsg, ctrlCtxFn); err != nil {
-		_ = c.Close()
-		return nil, err
-	}
-
-	return c, nil
-}
-
-// serverSocket returns a listening conn object that is ready for
-// asynchronous I/O using the network poller
-func clientSocket(ctx context.Context, network string, laddr, raddr *SCTPAddr, initMsg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (*conn, error) {
-
-	log.Printf("gId: %d, func clientSocket", getGoroutineID())
-
-	family, ipv6only := favoriteAddrFamily(network, laddr, raddr, "dial")
-	fd, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = setDefaultSockopts(fd, family, ipv6only); err != nil {
-		_ = unix.Close(fd)
-		return nil, err
-	}
-
-	c, err := newConn(fd, family, network)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = c.dial(ctx, laddr, raddr, initMsg, ctrlCtxFn); err != nil {
-		_ = c.Close()
-		return nil, err
-	}
-
-	return c, nil
-}
-
-func getsockoptBytes(fd, level, opt int, b []byte) error {
-	p := unsafe.Pointer(&b[0])
-	vallen := uint32(len(b))
-
-	if runtime.GOARCH == "s390x" || runtime.GOARCH == "386" {
-		const (
-			SYS_SOCKETCALL = 102
-			_GETSOCKOPT    = 15
-		)
-		args := [5]uintptr{uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen))}
-		_, _, err := unix.Syscall(SYS_SOCKETCALL, _GETSOCKOPT, uintptr(unsafe.Pointer(&args)), 0)
-		if err != 0 {
-			return errnoErr(err)
-		}
-		return nil
-	}
-
-	_, _, e1 := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen)), 0)
-	if e1 != 0 {
-		return errnoErr(e1)
-	}
-	return nil
 }

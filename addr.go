@@ -141,7 +141,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 			buf = append(buf, saBuf...)
 		}
 	default:
-		return nil, &net.AddrError{Err: fmt.Sprintf("invalid address family: %d", family), Addr: a.String()}
+		return nil, fmt.Errorf("invalid address family: %d", family)
 	}
 
 	return buf, nil
