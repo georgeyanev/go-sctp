@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestBindAddRemove(t *testing.T) {
+func TestListenerBindAddRemove(t *testing.T) {
 	ln1, err := Listen("sctp4", "127.0.0.1/127.0.0.2/127.0.0.3/127.0.0.4:0")
 	if err != nil {
 		t.Fatal(err)

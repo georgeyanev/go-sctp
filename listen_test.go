@@ -1,13 +1,19 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the GO_LICENSE file.
+
+// This file contains test code from go's net package, tweaked for SCTP where necessary.
+
 package sctp
 
 import (
-	"errors"
 	"fmt"
 	"golang.org/x/sys/unix"
+	"log"
 	"net"
-	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 var sctpListenerTests = []struct {
@@ -29,7 +35,7 @@ var sctpListenerTests = []struct {
 	{"sctp6", "[::1%nazone]"},
 	{"sctp6", "[::]"},
 	{"sctp6", "[::1]"},
-	//{"sctp6", "[::1]/[fe80::1%lo]/[fe80::2%lo]"}, // additional addresses needed
+	//{"sctp6", "[::1]/[fe80::1%lo]/[fe80::2%lo]"}, // additional local ipv6 addresses needed
 	{"sctp", "0.0.0.0"},
 	{"sctp", ""},
 	{"sctp", "[::ffff:0.0.0.0]"},
@@ -165,7 +171,7 @@ var dualStackSCTPListenerTests = []struct {
 // TestDualStackTCPListener tests both single and double listen
 // to a test listener with various address families, different
 // listening address and same port.
-func TestDualStackTCPListener(t *testing.T) {
+func TestDualStackSCTPListener(t *testing.T) {
 	if !supportsIPv4() || !supportsIPv6() {
 		t.Skip("both IPv4 and IPv6 are required")
 	}
@@ -266,14 +272,6 @@ func checkSecondListener(network, address string, err error) error {
 	return nil
 }
 
-func (ln *SCTPListener) port() string {
-	i := strings.LastIndexByte(ln.Addr().String(), ':')
-	if i < 0 {
-		return ""
-	}
-	return ln.Addr().String()[i+1:]
-}
-
 func checkDualStackSecondListener(network, address string, err, xerr error) error {
 	switch network {
 	case "sctp", "sctp4", "sctp6":
@@ -286,33 +284,52 @@ func checkDualStackSecondListener(network, address string, err, xerr error) erro
 	return nil
 }
 
-func newDualStackListener() (lns []*SCTPListener, err error) {
-	var args = []struct {
-		network string
-		SCTPAddr
-	}{
-		{"sctp4", SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IPv4(127, 0, 0, 1)}}}},
-		{"sctp6", SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IPv6loopback}}}},
+func TestWildWildcardSCTPListener(t *testing.T) {
+	if ln, err := Listen("sctp", ""); err == nil {
+		ln.Close()
+	} else {
+		log.Fatal(err)
 	}
-	for i := 0; i < 64; i++ {
-		var port int
-		var lns []*SCTPListener
-		for _, arg := range args {
-			arg.SCTPAddr.Port = port
-			ln, err := ListenSCTP(arg.network, &arg.SCTPAddr)
+	if ln, err := ListenSCTP("sctp", nil); err == nil {
+		ln.Close()
+	} else {
+		log.Fatal(err)
+	}
+}
+
+func TestClosingSCTPListener(t *testing.T) {
+	ln := newLocalListenerSCTP(t, "sctp")
+	addr := ln.Addr()
+
+	go func() {
+		for {
+			c, err := ln.Accept()
 			if err != nil {
-				continue
+				return
 			}
-			port = ln.Addr().(*SCTPAddr).Port
-			lns = append(lns, ln)
+			c.Close()
 		}
-		if len(lns) != len(args) {
-			for _, ln := range lns {
-				_ = ln.Close()
-			}
-			continue
-		}
-		return lns, nil
+	}()
+
+	// Let the goroutine start. We don't sleep long: if the
+	// goroutine doesn't start, the test will pass without really
+	// testing anything, which is OK.
+	time.Sleep(time.Millisecond)
+
+	ln.Close()
+
+	ln2, err := Listen("sctp", addr.String())
+	if err != nil {
+		t.Fatal(err)
 	}
-	return nil, errors.New("no dualstack available")
+	ln2.Close()
+}
+
+func TestListenConfigControlSCTP(t *testing.T) {
+	t.Run("StreamListen", func(t *testing.T) {
+		for _, network := range []string{"sctp", "sctp4", "sctp6"} {
+			ln := newLocalListenerSCTP(t, network, &ListenConfig{Control: controlOnConnSetup})
+			ln.Close()
+		}
+	})
 }

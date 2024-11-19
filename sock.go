@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"golang.org/x/sys/unix"
+	"log"
 	"net"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -17,7 +17,7 @@ type conn struct {
 	fd *os.File        // only trough os.File we can take advantage of the runtime network poller
 	rc syscall.RawConn // rc is used for specific SCTP read and write ops; derived from fd
 
-	// mutable (by bind and bindRemove); atomic access
+	// mutable (by BindAdd and BindRemove); atomic access
 	laddr atomic.Pointer[SCTPAddr]
 	raddr atomic.Pointer[SCTPAddr]
 
@@ -53,43 +53,32 @@ func (c *SCTPConn) WriteMsg(b []byte) (int, error)      { return 0, nil }
 func (c *conn) listen(ctx context.Context, laddr *SCTPAddr, backlog int, initMsg *InitMsg,
 	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) error {
 
-	err := c.rawSetDefaultListenerSockopts()
-	if err != nil {
+	log.Printf("gId: %d, func c.listen", getGoroutineID())
+	var err error
+	if err = c.rawSetDefaultListenerSockopts(); err != nil {
 		return err
 	}
 	if ctrlCtxFn != nil {
-		err = ctrlCtxFn(ctx, c.ctrlNetwork(), laddr.String(), c.rc)
-		if err != nil {
+		if err = ctrlCtxFn(ctx, ctrlNetwork(c.family, c.net), laddr.String(), c.rc); err != nil {
 			return err
 		}
 	}
 	// set init options (SCTP initMSG)
-	err = c.rawSetInitOpts(initMsg)
-	if err != nil {
+	if err = c.rawSetInitOpts(initMsg); err != nil {
 		return err
 	}
 	// bind
-	err = c.rawBindAdd(laddr)
-	if err != nil {
+	if err = c.rawBindAdd(laddr); err != nil {
 		return err
 	}
 	// listen
-	err = c.rawListen(backlog)
-	if err != nil {
+	if err = c.rawListen(backlog); err != nil {
 		return err
 	}
-	return c.refreshLocalAddr()
-}
-
-func (c *conn) ctrlNetwork() string {
-	switch c.net[len(c.net)-1] {
-	case '4', '6':
-		return c.net
-	}
-	if c.family == syscall.AF_INET {
-		return c.net + "4"
-	}
-	return c.net + "6"
+	// set local address
+	la, _ := c.getLocalAddr()
+	c.setAddr(la, nil)
+	return nil
 }
 
 func (c *conn) setAddr(laddr, raddr *SCTPAddr) {
@@ -97,43 +86,28 @@ func (c *conn) setAddr(laddr, raddr *SCTPAddr) {
 	c.raddr.Store(raddr)
 }
 
-func (c *conn) refreshLocalAddr() error {
-	// local
-	addrs, numAddrs, err := c.rawGetLocalAddrs()
+func (c *conn) getLocalAddr() (*SCTPAddr, error) {
+	laddr, numAddrs, err := c.rawGetLocalAddr()
 	if err != nil {
-		return err
-	}
-	localSctpAddr, err := fromSockaddrBuff(addrs, numAddrs)
-	if err != nil {
-		return err
-	}
-	// set local
-	c.setAddr(localSctpAddr, nil)
-	return nil
-}
-
-func (c *conn) refreshAddrs() error {
-	// local
-	laddr, numAddrs, err := c.rawGetLocalAddrs()
-	if err != nil {
-		return err
+		return nil, err
 	}
 	localSctpAddr, err := fromSockaddrBuff(laddr, numAddrs)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// remote
-	raddr, numAddrs, err := c.rawGetRemoteAddrs()
+	return localSctpAddr, nil
+}
+
+func (c *conn) getRemoteAddr() (*SCTPAddr, error) {
+	raddr, numAddrs, err := c.rawGetRemoteAddr()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	remoteSctpAddr, err := fromSockaddrBuff(raddr, numAddrs)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// set both
-	c.setAddr(localSctpAddr, remoteSctpAddr)
-	return nil
+	return remoteSctpAddr, nil
 }
 
 func (c *conn) ok() error {
@@ -155,10 +129,13 @@ func (c *conn) accept() (*conn, error) {
 	}
 
 	// get local and remote addresses
-	if err = nc.refreshAddrs(); err != nil {
-		_ = nc.Close()
-		return nil, err
-	}
+	var la, ra *SCTPAddr
+	la, _ = nc.getLocalAddr()
+	log.Printf("gId: %d, la: %v\n", getGoroutineID(), la)
+	ra, _ = nc.getRemoteAddr()
+	log.Printf("gId: %d, ra: %v\n", getGoroutineID(), ra)
+	// set local and remote addresses
+	nc.setAddr(la, ra)
 	return nc, nil
 }
 
@@ -198,35 +175,30 @@ func (c *conn) rawSetInitOpts(initMsg *InitMsg) error {
 // rawBind binds the specified addresses or,
 // if the SCTP extension described in [RFC5061] is supported, adds the specified addresses to existing bind
 func (c *conn) rawBindAdd(laddr *SCTPAddr) error {
-	const SCTP_SOCKOPT_BINDX_ADD int = 100
 	return c.rawBind(laddr, SCTP_SOCKOPT_BINDX_ADD)
 }
 
 func (c *conn) rawBindRemove(laddr *SCTPAddr) error {
-	const SCTP_SOCKOPT_BINDX_REM int = 101
 	return c.rawBind(laddr, SCTP_SOCKOPT_BINDX_REM)
 }
 
 func (c *conn) rawBind(laddr *SCTPAddr, bindMode int) error {
-	buf, err := laddr.toSockaddrBuff(c.family)
-	if err != nil {
-		return err
-	}
-	/// setsockopt
+	var err error
 	doErr := c.rc.Control(func(fd uintptr) {
-		err = unix.SetsockoptString(int(fd), SOL_SCTP, bindMode, string(buf))
+		err = bindx(int(fd), c.family, bindMode, laddr)
 	})
 	if doErr != nil {
 		return doErr
 	}
 	if err != nil {
-		return os.NewSyscallError("setsockopt", err)
+		return err
 	}
-	return c.refreshLocalAddr()
+	return nil
 }
 
 func (c *conn) rawListen(backlog int) error {
 	var err error
+	log.Printf("gId: %d, func rawListen\n", getGoroutineID())
 	doErr := c.rc.Control(func(fd uintptr) {
 		err = unix.Listen(int(fd), backlog)
 	})
@@ -238,19 +210,23 @@ func (c *conn) rawListen(backlog int) error {
 	}
 	return nil
 }
-
-func (c *conn) rawGetLocalAddrs() ([]byte, int, error) {
+func (c *conn) rawGetLocalAddr() ([]byte, int, error) {
 	const SCTP_GET_LOCAL_ADDRS int = 109
+	log.Printf("gId: %d, func rawGetLocalAddr\n", getGoroutineID())
 	return c.rawGetAddrs(SCTP_GET_LOCAL_ADDRS)
 }
-func (c *conn) rawGetRemoteAddrs() ([]byte, int, error) {
+
+func (c *conn) rawGetRemoteAddr() ([]byte, int, error) {
 	const SCTP_GET_PEER_ADDRS int = 108
+	log.Printf("gId: %d, func rawGetRemoteAddr\n", getGoroutineID())
 	return c.rawGetAddrs(SCTP_GET_PEER_ADDRS)
 }
 
 func (c *conn) rawGetAddrs(optName int) ([]byte, int, error) {
 	// SCTP_ADDRS_BUF_SIZE is the allocated buffer for system calls returning local/remote sctp multi-homed addresses
 	const SCTP_ADDRS_BUF_SIZE int = 4096 //enough for most cases
+
+	log.Printf("gId: %d,func rawGetAddrs\n", getGoroutineID())
 
 	type rawSctpAddrs struct {
 		assocId int32
@@ -268,8 +244,9 @@ func (c *conn) rawGetAddrs(optName int) ([]byte, int, error) {
 		return nil, 0, doErr
 	}
 	if err != nil {
+		log.Printf("gId: %d, getsockopt error: %v, optName: %v, rawParamBuf: %v ", getGoroutineID(), err, optName, rawParamBuf)
+		//debug.PrintStack()
 		return nil, 0, os.NewSyscallError("getsockopt", err)
-
 	}
 	return rawParam.addrs[:], int(rawParam.addrNum), nil
 }
@@ -284,17 +261,18 @@ func (c *conn) rawAccept() (int, error) {
 	doErr := c.rc.Read(func(fd uintptr) bool {
 		for {
 			ns, _, errcall, err = accept(int(fd))
+			log.Printf("gId: %d, rawAccept returned %d", getGoroutineID(), err)
 			if err == nil {
 				return true
 			}
 			switch err {
-			case syscall.EINTR:
+			case unix.EINTR:
 				continue
-			case syscall.EAGAIN:
+			case unix.EAGAIN:
 				// this causes the wrapper to call waitRead
 				// see the source code for internal/poll.FD.RawRead
 				return false
-			case syscall.ECONNABORTED:
+			case unix.ECONNABORTED:
 				// This means that a socket on the listen
 				// queue was closed before we Accept()ed it;
 				// it's a silly error, so try again.
@@ -348,61 +326,4 @@ func newSCTPConn(c *conn) *SCTPConn {
 
 	// TO DO: set heartbeat disable here or heartbeat interval
 	return &SCTPConn{c}
-}
-
-func setNoDelay(c *conn, b bool) {
-
-}
-
-// serverSocket returns a conn object that is ready for
-// asynchronous I/O using the network poller
-func serverSocket(ctx context.Context, network string, laddr *SCTPAddr, initMsg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (*conn, error) {
-
-	family, ipv6only := favoriteAddrFamily(network, laddr, nil, "listen")
-	fd, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = setDefaultSockopts(fd, family, ipv6only); err != nil {
-		_ = unix.Close(fd)
-		return nil, err
-	}
-
-	c, err := newConn(fd, family, network)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = c.listen(ctx, laddr, listenerBacklog(), initMsg, ctrlCtxFn); err != nil {
-		_ = c.Close()
-		return nil, err
-	}
-
-	return c, nil
-}
-
-func getsockoptBytes(fd, level, opt int, b []byte) error {
-	p := unsafe.Pointer(&b[0])
-	vallen := uint32(len(b))
-
-	if runtime.GOARCH == "s390x" || runtime.GOARCH == "386" {
-		const (
-			SYS_SOCKETCALL = 102
-			_GETSOCKOPT    = 15
-		)
-		args := [5]uintptr{uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen))}
-		_, _, err := unix.Syscall(SYS_SOCKETCALL, _GETSOCKOPT, uintptr(unsafe.Pointer(&args)), 0)
-		if err != 0 {
-			return errnoErr(err)
-		}
-		return nil
-	}
-
-	_, _, e1 := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen)), 0)
-	if e1 != 0 {
-		return errnoErr(e1)
-	}
-	return nil
 }

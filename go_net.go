@@ -9,7 +9,10 @@
 package sctp
 
 import (
+	"context"
+	"errors"
 	"golang.org/x/sys/unix"
+	"log"
 	"net"
 	"os"
 	"runtime"
@@ -19,6 +22,26 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+)
+
+var (
+	testHookCanceledDial = func() {} // for golang.org/issue/16523
+
+	testHookDialSCTP func(ctx context.Context, net string, raddr *SCTPAddr, d *Dialer) (*SCTPConn, error)
+
+	// testHookStepTime sleeps until time has moved forward by a nonzero amount.
+	// This helps to avoid flakes in timeout tests by ensuring that an implausibly
+	// short deadline (such as 1ns in the future) is always expired by the time
+	// a relevant system call occurs.
+	testHookStepTime = func() {}
+
+	// aLongTimeAgo is a non-zero time, far in the past, used for
+	// immediate cancellation of dials.
+	aLongTimeAgo = time.Unix(1, 0)
+
+	// noDeadline and noCancel are just zero values for
+	// readability with functions taking too many parameters.
+	noDeadline = time.Time{}
 )
 
 // Wrapper around the socket system call that marks the returned file
@@ -318,7 +341,6 @@ func ipToSockaddrInet6(ip net.IP, port int, zone string) (syscall.SockaddrInet6,
 	if ip6 == nil {
 		return syscall.SockaddrInet6{}, &net.AddrError{Err: "non-IPv6 address", Addr: ip.String()}
 	}
-	// TODO: if this function is used for something other than probing, the zone cache implementation should be pulled here
 	sa := syscall.SockaddrInet6{Port: port, ZoneId: uint32(zoneCache.index(zone))}
 	copy(sa.Addr[:], ip6)
 	return sa, nil
@@ -366,9 +388,14 @@ func setDefaultSockopts(s, family int, ipv6only bool) error {
 		// Allow both IP versions even if the OS default
 		// is otherwise. Note that some operating systems
 		// never admit this option.
-		syscall.SetsockoptInt(s, syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, boolint(ipv6only))
+		_ = syscall.SetsockoptInt(s, syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, boolint(ipv6only))
 	}
 	return nil
+}
+
+func setDefaultListenerSockopts(s int) error {
+	// Allow reuse of recently-used addresses.
+	return os.NewSyscallError("setsockopt", syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1))
 }
 
 // Boolean to int.
@@ -715,4 +742,240 @@ func errnoErr(e syscall.Errno) error {
 		return errENOENT
 	}
 	return e
+}
+
+// deadline returns the earliest of:
+//   - now+Timeout
+//   - d.Deadline
+//   - the context's deadline
+//
+// Or zero, if none of Timeout, Deadline, or context's deadline is set.
+func (d *Dialer) deadline(ctx context.Context, now time.Time) (earliest time.Time) {
+	if d.Timeout != 0 { // including negative, for historical reasons
+		earliest = now.Add(d.Timeout)
+	}
+	if d, ok := ctx.Deadline(); ok {
+		earliest = minNonzeroTime(earliest, d)
+	}
+	return minNonzeroTime(earliest, d.Deadline)
+}
+
+func minNonzeroTime(a, b time.Time) time.Time {
+	if a.IsZero() {
+		return b
+	}
+	if b.IsZero() || a.Before(b) {
+		return a
+	}
+	return b
+}
+
+// errTimeout exists to return the historical "i/o timeout" string
+// for context.DeadlineExceeded. See mapErr.
+// It is also used when Dialer.Deadline is exceeded.
+// error.Is(errTimeout, context.DeadlineExceeded) returns true.
+//
+// TODO(iant): We could consider changing this to os.ErrDeadlineExceeded
+// in the future, if we make
+//
+//	errors.Is(os.ErrDeadlineExceeded, context.DeadlineExceeded)
+//
+// return true.
+var errTimeout error = &timeoutError{}
+
+type timeoutError struct{}
+
+func (e *timeoutError) Error() string   { return "i/o timeout" }
+func (e *timeoutError) Timeout() bool   { return true }
+func (e *timeoutError) Temporary() bool { return true }
+
+func (e *timeoutError) Is(err error) bool {
+	return err == context.DeadlineExceeded
+}
+
+var (
+	// For connection setup operations.
+	errNoSuitableAddress = errors.New("no suitable address found")
+
+	// For connection setup and write operations.
+	errMissingAddress = errors.New("missing address")
+
+	// For both read and write operations.
+	errCanceled         = canceledError{}
+	ErrWriteToConnected = errors.New("use of WriteTo with pre-connected connection")
+)
+
+// canceledError lets us return the same error string we have always
+// returned, while still being Is context.Canceled.
+type canceledError struct{}
+
+func (canceledError) Error() string { return "operation was canceled" }
+
+func (canceledError) Is(err error) bool { return err == context.Canceled }
+
+func connect(fd, family int, network string, ctx context.Context, raddr *SCTPAddr) (c *conn, ret error) {
+	err := rawConnect(fd, family, raddr)
+	switch err {
+	case unix.EINPROGRESS, unix.EALREADY, unix.EINTR:
+	case nil, unix.EISCONN:
+		select {
+		case <-ctx.Done():
+			_ = c.Close()
+			return nil, ctx.Err()
+		default:
+		}
+
+		c, err = newConn(fd, family, network)
+		if err != nil {
+			return nil, err
+		}
+
+		return c, nil
+
+	default:
+		_ = c.Close()
+		return nil, os.NewSyscallError("connect", err)
+	}
+
+	// Change: By creating our connection here we register the soon-to-be
+	// connected fd with the go runtime network poller.
+	// We have to do this here in order for the deadlines below to work.
+	c, err = newConn(fd, family, network)
+	if err != nil {
+		return nil, err
+	}
+
+	if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
+		c.SetWriteDeadline(deadline)
+	}
+
+	// Start the "interrupter" goroutine, if this context might be canceled.
+	//
+	// The interrupter goroutine waits for the context to be done and interrupts the
+	// dial (by altering the conn's write deadline, which wakes up waitWrite).
+	ctxDone := ctx.Done()
+	//if ctxDone != nil {
+	// Wait for the interrupter goroutine to exit before returning from connect.
+	done := make(chan struct{})
+	interruptRes := make(chan error)
+	defer func() {
+		close(done)
+		if ctxErr := <-interruptRes; ctxErr != nil && ret == nil {
+			// The interrupter goroutine called SetWriteDeadline,
+			// but the connect code below had returned from
+			// waitWrite already and did a successful connect (ret
+			// == nil). Because we've now poisoned the connection
+			// by making it unwritable, don't return a successful
+			// dial. This was issue 16523.
+			_ = c.Close()
+			c = nil
+			ret = ctxErr
+		} else if c != nil && ret == nil {
+			c.SetWriteDeadline(noDeadline) // restore the writeDeadline
+		}
+	}()
+	go func() {
+		waitTimeMillis := 2
+		for {
+			select {
+			case <-ctxDone:
+				// Force the runtime's poller to immediately give up
+				// waiting for writability, unblocking waitWrite below.
+				c.SetWriteDeadline(aLongTimeAgo)
+				testHookCanceledDial()
+				interruptRes <- ctx.Err()
+				return
+			case <-done:
+				interruptRes <- nil
+				return
+			case <-time.After(time.Duration(waitTimeMillis) * time.Millisecond):
+				log.Printf("TIMER INFLICTED WAKEUP...")
+				waitTimeMillis *= 10
+				// Force the runtime's poller to immediately give up
+				// waiting for writability, unblocking waitWrite below.
+				c.SetWriteDeadline(aLongTimeAgo)
+			}
+		}
+	}()
+	//}
+
+	for {
+		// Change: The netFD.connect func from go runtime is calling WaitWrite here directly
+		// from the poll descriptor. This we can not do directly as we don't have
+		// access to this poll descriptor.
+		// Instead, the rawConn.Write function calls internally WaitWrite, and we
+		// can make it to do that with a dummy function passed to it. This
+		// function should return false the first time and true afterward.
+		// See the os.rawConn.Write function for details.
+		dummyFuncCalled := false
+		doErr := c.rc.Write(func(fd uintptr) bool {
+			if !dummyFuncCalled {
+				dummyFuncCalled = true
+				return false // first time only causing the call to WaitWrite
+			}
+			return true // causing exit from pfd.RawWrite
+		})
+		if doErr != nil {
+			select {
+			case <-ctxDone:
+				_ = c.Close()
+				return nil, ctx.Err()
+			default:
+			}
+			// here if the error is timeout then this is caused by our wakeup timer (workaround for issue #70373)
+			// in that case we just skip to SO_ERROR checking
+			log.Printf("rc.Write returned error: %T, %v, isTimeout: %v", doErr, doErr, errors.Is(doErr, os.ErrDeadlineExceeded))
+			if !errors.Is(doErr, os.ErrDeadlineExceeded) {
+				_ = c.Close()
+				return nil, doErr
+			}
+		}
+
+		err = c.SetWriteDeadline(noDeadline) // restore the writeDeadline
+		if err != nil {
+			_ = c.Close()
+			log.Printf("4 f.SetWriteDeadline returned error: %v", err)
+			return nil, err
+		}
+
+		// Performing multiple connect system calls on a
+		// non-blocking socket under Unix variants does not
+		// necessarily result in earlier errors being
+		// returned. Instead, once runtime-integrated network
+		// poller tells us that the socket is ready, get the
+		// SO_ERROR socket option to see if the connection
+		// succeeded or failed. See issue 7474 for further
+		// details.
+		var nerr int
+		nerr, err = unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_ERROR)
+		if err != nil {
+			_ = c.Close()
+			log.Printf("5 syscall.GetsockoptInt returned error: %v", err)
+			return nil, os.NewSyscallError("getsockopt", err)
+		}
+		log.Printf("SO_ERROR syscall.Errno is %d", nerr)
+
+		switch err = unix.Errno(nerr); err {
+		case unix.EINPROGRESS, unix.EALREADY, unix.EINTR:
+		case unix.EISCONN:
+			return c, nil
+		case unix.Errno(0):
+			// The runtime poller can wake us up spuriously;
+			// see issues 14548 and 19289. Check that we are
+			// really connected; if not, wait again.
+
+			log.Printf("syscall.Errno is 0, calling rawGetpeername")
+			if _, err = syscall.Getpeername(fd); err == nil {
+				return c, nil
+			} else {
+				log.Printf("Getpeername returned error: %v", err)
+			}
+
+		default:
+			_ = c.Close()
+			log.Printf("SO_ERROR: %d, %v", err.(syscall.Errno), err)
+			return nil, os.NewSyscallError("connect", err)
+		}
+		runtime.KeepAlive(c)
+	}
 }

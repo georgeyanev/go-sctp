@@ -2,8 +2,19 @@
 
 package sctp
 
+import (
+	"fmt"
+	"golang.org/x/sys/unix"
+	"log"
+	"runtime"
+	"syscall"
+)
+
 const (
 	SOL_SCTP = 132
+
+	SCTP_SOCKOPT_BINDX_ADD = 100
+	SCTP_SOCKOPT_BINDX_REM = 101
 )
 
 // InitMsg structure provides information for initializing new SCTP associations
@@ -20,4 +31,37 @@ type InitMsg struct {
 	MaxInitTimeout uint16
 }
 
-// TODO: add more listener test (for control func and others (from net.listen_tests.go))
+// TODO: revise usage of Context in listening
+// TODO: Add test from net.tcpsock_test.go and tcpsock_unix_test.go
+// TODO: Add test from net.net_test.go (regarding Closing, Close read, close write etc)
+// TODO: Add test from net.protoconn_test.go (regarding specific methods of Conn, SCTPConn etc)
+// TODO: Add test from timeout_test.go
+// TODO: Add test from write_unix_test.go
+// TODO: Add test from conn_test.go
+// TODO: Add test from dial_unix_test.go
+
+// )
+
+func getGoroutineID() uint64 {
+	buf := make([]byte, 64)
+	n := runtime.Stack(buf, false)
+	buf = buf[:n]
+	// The format will look like "goroutine 1234 [running]:"
+	var id uint64
+	fmt.Sscanf(string(buf), "goroutine %d ", &id)
+	return id
+}
+
+func getBlockedState(fd int) string {
+	flags, err := unix.FcntlInt(uintptr(fd), syscall.F_GETFL, 0)
+	if err != nil {
+		log.Fatalf("Failed to get file flags: %v", err)
+	}
+
+	// Check if O_NONBLOCK is set
+	if flags&syscall.O_NONBLOCK != 0 {
+		return "NON-blocked"
+	} else {
+		return "blocked"
+	}
+}
