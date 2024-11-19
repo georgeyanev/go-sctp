@@ -6,9 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
-	"runtime"
 	"syscall"
-	"unsafe"
 )
 
 // serverSocket returns a listening conn object that is ready for
@@ -39,6 +37,30 @@ func serverSocket(ctx context.Context, network string, laddr *SCTPAddr, initMsg 
 	return c, nil
 }
 
+func serverSocketNew(ctx context.Context, network string, laddr *SCTPAddr, initMsg *InitMsg,
+	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (fd *sctpFD, err error) {
+
+	log.Printf("gId: %d,func serverSocket", getGoroutineID())
+
+	family, ipv6only := favoriteAddrFamily(network, laddr, nil, "listen")
+	s, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = setDefaultSockopts(s, family, ipv6only); err != nil {
+		_ = unix.Close(s)
+		return nil, err
+	}
+
+	fd = newFD(family, network)
+	if err = fd.listen(ctx, s, laddr, listenerBacklog(), initMsg, ctrlCtxFn); err != nil {
+		_ = unix.Close(s)
+		return nil, err
+	}
+	return
+}
+
 // clientSocket returns a listening conn object that is ready for
 // asynchronous I/O using the network poller
 func clientSocket(ctx context.Context, network string, laddr, raddr *SCTPAddr, initMsg *InitMsg,
@@ -55,23 +77,6 @@ func clientSocket(ctx context.Context, network string, laddr, raddr *SCTPAddr, i
 	_ = setDefaultSockopts(fd, family, ipv6only)
 
 	return sysDial(fd, family, network, ctx, laddr, raddr, initMsg, ctrlCtxFn)
-}
-
-type rawConnDummy struct {
-	fd int
-}
-
-func (r rawConnDummy) Control(f func(uintptr)) error {
-	f(uintptr(r.fd))
-	return nil
-}
-
-func (r rawConnDummy) Read(f func(uintptr) bool) error {
-	panic("not implemented")
-}
-
-func (r rawConnDummy) Write(f func(uintptr) bool) error {
-	panic("not implemented")
 }
 
 func sysDial(fd, family int, network string, ctx context.Context, laddr *SCTPAddr, raddr *SCTPAddr, msg *InitMsg,
@@ -96,7 +101,7 @@ func sysDial(fd, family int, network string, ctx context.Context, laddr *SCTPAdd
 			return nil, err
 		}
 		// bind
-		if err := bindx(fd, family, SCTP_SOCKOPT_BINDX_ADD, laddr); err != nil {
+		if err := sysBindx(fd, family, SCTP_SOCKOPT_BINDX_ADD, laddr); err != nil {
 			return nil, err
 		}
 	}
@@ -114,18 +119,17 @@ func sysDial(fd, family int, network string, ctx context.Context, laddr *SCTPAdd
 	return c, nil
 }
 
-func setInitOpts(fd int, initMsg *InitMsg) error {
-	const SCTP_INITMSG = 2
-	initMsgBuf := unsafe.Slice((*byte)(unsafe.Pointer(initMsg)), unsafe.Sizeof(*initMsg))
-	return os.NewSyscallError("setsockopt", unix.SetsockoptString(int(fd), SOL_SCTP, SCTP_INITMSG, string(initMsgBuf)))
-}
-
-func bindx(fd, family, bindMode int, laddr *SCTPAddr) error {
+func sysBindx(fd, family, bindMode int, laddr *SCTPAddr) error {
 	buf, err := laddr.toSockaddrBuff(family)
 	if err != nil {
 		return &net.AddrError{Err: err.Error(), Addr: laddr.String()}
 	}
 	return os.NewSyscallError("bindx", unix.SetsockoptString(fd, SOL_SCTP, bindMode, string(buf)))
+}
+
+func sysListen(sysfd, backlog int) error {
+	log.Printf("gId: %d, func rawListen\n", getGoroutineID())
+	return os.NewSyscallError("listen", unix.Listen(sysfd, backlog))
 }
 
 func rawConnect(fd, family int, raddr *SCTPAddr) error {
@@ -156,30 +160,6 @@ func rawConnect(fd, family int, raddr *SCTPAddr) error {
 	// in one-to-one SCTP mode (SOCK_STREAM socket type) we don't want the assoc_id
 	if err = unix.SetsockoptString(fd, SOL_SCTP, SCTP_SOCKOPT_CONNECTX, string(buf)); err != nil {
 		return err // we can not wrap here because we switch over this value
-	}
-	return nil
-}
-
-func getsockoptBytes(fd, level, opt int, b []byte) error {
-	p := unsafe.Pointer(&b[0])
-	vallen := uint32(len(b))
-
-	if runtime.GOARCH == "s390x" || runtime.GOARCH == "386" {
-		const (
-			SYS_SOCKETCALL = 102
-			_GETSOCKOPT    = 15
-		)
-		args := [5]uintptr{uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen))}
-		_, _, err := unix.Syscall(SYS_SOCKETCALL, _GETSOCKOPT, uintptr(unsafe.Pointer(&args)), 0)
-		if err != 0 {
-			return errnoErr(err)
-		}
-		return nil
-	}
-
-	_, _, e1 := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen)), 0)
-	if e1 != 0 {
-		return errnoErr(e1)
 	}
 	return nil
 }

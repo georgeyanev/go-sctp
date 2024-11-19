@@ -2,6 +2,7 @@ package sctp
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 	"syscall"
@@ -9,7 +10,7 @@ import (
 )
 
 type SCTPListener struct {
-	c  *conn
+	fd *sctpFD
 	lc *ListenConfig
 }
 
@@ -106,11 +107,11 @@ func listenSCTP(ctx context.Context, network string, laddr *SCTPAddr, lc *Listen
 		lc.InitMsg.MaxInstreams = 10
 	}
 
-	c, err := serverSocket(ctx, network, laddr, &lc.InitMsg, ctrlCtxFn)
+	fd, err := serverSocketNew(ctx, network, laddr, &lc.InitMsg, ctrlCtxFn)
 	if err != nil {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr.opAddr(), Err: err}
 	}
-	return &SCTPListener{c: c, lc: lc}, nil
+	return &SCTPListener{fd: fd, lc: lc}, nil
 }
 
 // Accept implements the Accept method in the [Listener] interface; it
@@ -120,14 +121,14 @@ func (ln *SCTPListener) Accept() (net.Conn, error) {
 }
 
 // AcceptSCTP accepts the next incoming call and returns the new connection.
-func (ln *SCTPListener) AcceptSCTP() (*SCTPConn, error) {
+func (ln *SCTPListener) AcceptSCTP() (*SCTPConnNew, error) {
 	log.Printf("gId %d: func ln.AcceptSCTP", getGoroutineID()) // TODO: remove()
 	if !ln.ok() {
 		return nil, syscall.EINVAL
 	}
 	c, err := ln.accept()
 	if err != nil {
-		return nil, &net.OpError{Op: "accept", Net: ln.c.net, Source: nil, Addr: ln.c.laddr.Load().opAddr(), Err: err}
+		return nil, &net.OpError{Op: "accept", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load().opAddr(), Err: err}
 	}
 	return c, nil
 }
@@ -136,7 +137,7 @@ func (ln *SCTPListener) Addr() net.Addr {
 	if !ln.ok() {
 		return nil
 	}
-	return ln.c.LocalAddr()
+	return ln.fd.laddr.Load()
 }
 
 func (ln *SCTPListener) Close() error {
@@ -144,38 +145,99 @@ func (ln *SCTPListener) Close() error {
 		return errEINVAL
 	}
 	if err := ln.close(); err != nil {
-		return &net.OpError{Op: "close", Net: ln.c.net, Source: nil, Addr: ln.c.laddr.Load().opAddr(), Err: err}
+		return &net.OpError{Op: "close", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load().opAddr(), Err: err}
 	}
 	return nil
 }
 
-func (ln *SCTPListener) Binder() Binder {
-	if !ln.ok() {
-		return nil
-	}
-	return ln.c
-}
-
 // SetDeadline sets the deadline associated with the listener.
 // A zero time value disables the deadline.
-func (l *SCTPListener) SetDeadline(t time.Time) error {
-	if !l.ok() {
-		return syscall.EINVAL
+func (ln *SCTPListener) SetDeadline(t time.Time) error {
+	if !ln.ok() {
+		return errEINVAL
 	}
-	return l.c.SetDeadline(t)
+	return ln.fd.f.SetDeadline(t)
 }
 
-func (ln *SCTPListener) ok() bool { return ln != nil && ln.c != nil }
+// BindAdd associates additional addresses with an already bound endpoint (i.e. socket).
+// If the endpoint supports dynamic address reconfiguration, BindAdd may cause an
+// endpoint to send the appropriate message to its peers to change the peers' address lists.
+// New accepted associations will be associated with these
+// addresses in addition to the already present ones
+// Port number should be equal to the already bound port.
+func (ln *SCTPListener) BindAdd(address string) error {
+	if !ln.ok() {
+		return errEINVAL
+	}
+	laddr, err := resolveSCTPAddr("bindx", ln.fd.net, address, nil)
+	if err != nil {
+		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
+			Err: errors.New("add address: " + address + ": " + err.Error())}
+	}
+	if err = ln.BindAddSCTP(laddr); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (ln *SCTPListener) BindAddSCTP(laddr *SCTPAddr) error {
+	if !ln.ok() {
+		return errEINVAL
+	}
+	if err := ln.fd.bind(laddr, SCTP_SOCKOPT_BINDX_ADD); err != nil {
+		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
+			Err: errors.New("add address: " + laddr.String() + ": " + err.Error())}
+	}
+	return nil
+}
+
+// BindRemove remove some addresses with which a bound socket is associated.
+// New associations accepted will not be associated with these addresses
+// Port number should be equal to the already bound port.
+func (ln *SCTPListener) BindRemove(address string) error {
+	if !ln.ok() {
+		return errEINVAL
+	}
+	laddr, err := resolveSCTPAddr("bindx", ln.fd.net, address, nil)
+	if err != nil {
+		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
+			Err: errors.New("remove address: " + address + ": " + err.Error())}
+	}
+	if err = ln.BindRemoveSCTP(laddr); err != nil {
+		return err
+	}
+	return nil
+
+}
+
+func (ln *SCTPListener) BindRemoveSCTP(laddr *SCTPAddr) error {
+	if !ln.ok() {
+		return errEINVAL
+	}
+	if err := ln.fd.bind(laddr, SCTP_SOCKOPT_BINDX_REM); err != nil {
+		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
+			Err: errors.New("remove address: " + laddr.String() + ": " + err.Error())}
+	}
+	return nil
+}
+
+func (ln *SCTPListener) ok() bool { return ln != nil && ln.fd != nil }
 
 func (ln *SCTPListener) close() error {
-	return ln.c.Close()
+	if !ln.ok() {
+		return errEINVAL
+	}
+	return ln.fd.f.Close()
 }
 
-func (ln *SCTPListener) accept() (*SCTPConn, error) {
+func (ln *SCTPListener) accept() (*SCTPConnNew, error) {
+	if !ln.ok() {
+		return nil, errEINVAL
+	}
 	log.Printf("gId %d: func ln.accept", getGoroutineID())
-	c, err := ln.c.accept()
+	fd, err := ln.fd.accept()
 	if err != nil {
 		return nil, err
 	}
-	return newSCTPConn(c), nil
+	return newSCTPConnNew(fd), nil
 }

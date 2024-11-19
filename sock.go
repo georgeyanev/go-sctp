@@ -15,7 +15,7 @@ import (
 
 type conn struct {
 	fd *os.File        // only trough os.File we can take advantage of the runtime network poller
-	rc syscall.RawConn // rc is used for specific SCTP read and write ops; derived from fd
+	rc syscall.RawConn // rc is used for specific SCTP socket ops; derived from fd
 
 	// mutable (by BindAdd and BindRemove); atomic access
 	laddr atomic.Pointer[SCTPAddr]
@@ -110,12 +110,7 @@ func (c *conn) getRemoteAddr() (*SCTPAddr, error) {
 	return remoteSctpAddr, nil
 }
 
-func (c *conn) ok() error {
-	if c == nil {
-		return errEINVAL // or os.ErrInvalid ?
-	}
-	return nil
-}
+func (c *conn) ok() bool { return c != nil && c.fd != nil }
 
 func (c *conn) accept() (*conn, error) {
 	nfd, err := c.rawAccept()
@@ -185,7 +180,7 @@ func (c *conn) rawBindRemove(laddr *SCTPAddr) error {
 func (c *conn) rawBind(laddr *SCTPAddr, bindMode int) error {
 	var err error
 	doErr := c.rc.Control(func(fd uintptr) {
-		err = bindx(int(fd), c.family, bindMode, laddr)
+		err = sysBindx(int(fd), c.family, bindMode, laddr)
 	})
 	if doErr != nil {
 		return doErr
