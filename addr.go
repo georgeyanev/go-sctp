@@ -88,7 +88,7 @@ func (a *SCTPAddr) opAddr() net.Addr {
 }
 
 func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
-	var port int = 0
+	var port = 0
 	if a != nil {
 		port = a.Port
 	}

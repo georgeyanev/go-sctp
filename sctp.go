@@ -4,10 +4,7 @@ package sctp
 
 import (
 	"fmt"
-	"golang.org/x/sys/unix"
-	"log"
 	"runtime"
-	"syscall"
 )
 
 const (
@@ -39,8 +36,8 @@ type InitMsg struct {
 // TODO: Add test from write_unix_test.go
 // TODO: Add test from conn_test.go
 // TODO: Add test from dial_unix_test.go
-
-// )
+// TODO: Test for timeouts with Accept (setReadDeadLine)
+// TODO: Set finalizer for FD?
 
 func getGoroutineID() uint64 {
 	buf := make([]byte, 64)
@@ -50,18 +47,4 @@ func getGoroutineID() uint64 {
 	var id uint64
 	fmt.Sscanf(string(buf), "goroutine %d ", &id)
 	return id
-}
-
-func getBlockedState(fd int) string {
-	flags, err := unix.FcntlInt(uintptr(fd), syscall.F_GETFL, 0)
-	if err != nil {
-		log.Fatalf("Failed to get file flags: %v", err)
-	}
-
-	// Check if O_NONBLOCK is set
-	if flags&syscall.O_NONBLOCK != 0 {
-		return "NON-blocked"
-	} else {
-		return "blocked"
-	}
 }

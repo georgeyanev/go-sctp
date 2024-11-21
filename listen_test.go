@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 	"log"
 	"net"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -229,30 +230,30 @@ func differentWildcardAddr(i, j string) bool {
 }
 
 func checkFirstListener(network string, ln any) error {
-	c := ln.(*SCTPListener).c
+	fd := ln.(*SCTPListener).fd
 	switch network {
 	case "sctp":
 		// If a node under test supports both IPv6 capability
 		// and IPv6 IPv4-mapping capability, we can assume
 		// that the node listens on a wildcard address with an
 		// AF_INET6 socket.
-		if supportsIPv4map() && c.laddr.Load().isWildcard() {
-			if c.family != unix.AF_INET6 {
-				return fmt.Errorf("Listen(%s, %v) returns %v; want %v", c.net, c.laddr.Load(), c.family, unix.AF_INET6)
+		if supportsIPv4map() && fd.laddr.Load().isWildcard() {
+			if fd.family != unix.AF_INET6 {
+				return fmt.Errorf("Listen(%s, %v) returns %v; want %v", fd.net, fd.laddr.Load(), fd.family, unix.AF_INET6)
 			}
 		} else {
-			if c.family != c.laddr.Load().family() {
-				return fmt.Errorf("Listen(%s, %v) returns %v; want %v", c.net, c.laddr.Load(), c.family, c.laddr.Load().family())
+			if fd.family != fd.laddr.Load().family() {
+				return fmt.Errorf("Listen(%s, %v) returns %v; want %v", fd.net, fd.laddr.Load(), fd.family, fd.laddr.Load().family())
 			}
 		}
 
 	case "sctp4":
-		if c.family != syscall.AF_INET {
-			return fmt.Errorf("%v got %v; want %v", c.laddr.Load(), c.family, syscall.AF_INET)
+		if fd.family != syscall.AF_INET {
+			return fmt.Errorf("%v got %v; want %v", fd.laddr.Load(), fd.family, syscall.AF_INET)
 		}
 	case "sctp6":
-		if c.family != syscall.AF_INET6 {
-			return fmt.Errorf("%v got %v; want %v", c.laddr.Load(), c.family, syscall.AF_INET6)
+		if fd.family != syscall.AF_INET6 {
+			return fmt.Errorf("%v got %v; want %v", fd.laddr.Load(), fd.family, syscall.AF_INET6)
 		}
 	default:
 		return net.UnknownNetworkError(network)
@@ -332,4 +333,62 @@ func TestListenConfigControlSCTP(t *testing.T) {
 			ln.Close()
 		}
 	})
+}
+
+func TestListenerBindAddRemove(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1/127.0.0.2/127.0.0.3/127.0.0.4:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("ln1 address before: ", ln1.Addr())
+	ln1SCTP := ln1.(*SCTPListener)
+	err = ln1SCTP.BindRemove("127.0.0.2/127.0.0.1:" + ln1SCTP.port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(ln1.Addr().String(), "127.0.0.1") ||
+		strings.Contains(ln1.Addr().String(), "127.0.0.2") {
+		t.Fatal(err)
+	}
+	fmt.Println("ln1 address after: ", ln1.Addr())
+	err = ln1SCTP.BindAdd("127.0.0.2/127.0.0.1:" + ln1SCTP.port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ln1.Addr().String(), "127.0.0.1") ||
+		!strings.Contains(ln1.Addr().String(), "127.0.0.2") {
+		t.Fatal(err)
+	}
+	fmt.Println("ln1 address after: ", ln1.Addr())
+	_ = ln1.Close()
+
+	//
+	ln1, err = Listen("sctp", "[::1]/127.0.0.1/127.0.0.2/127.0.0.3/127.0.0.4:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("ln1 address before: ", ln1.Addr())
+	ln1SCTP = ln1.(*SCTPListener)
+	err = ln1SCTP.BindRemove("[::1]/127.0.0.2/127.0.0.1:" + ln1SCTP.port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(ln1.Addr().String(), "127.0.0.1") ||
+		strings.Contains(ln1.Addr().String(), "127.0.0.2") ||
+		strings.Contains(ln1.Addr().String(), "::1") {
+		t.Fatal(err)
+	}
+	fmt.Println("ln1 address after: ", ln1.Addr())
+
+	err = ln1SCTP.BindAdd("[::1]/127.0.0.2/127.0.0.1:" + ln1SCTP.port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ln1.Addr().String(), "127.0.0.1") ||
+		!strings.Contains(ln1.Addr().String(), "127.0.0.2") ||
+		!strings.Contains(ln1.Addr().String(), "::1") {
+		t.Fatal(err)
+	}
+	fmt.Println("ln1 address after: ", ln1.Addr())
+	_ = ln1.Close()
 }
