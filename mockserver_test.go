@@ -35,7 +35,7 @@ func newLocalListenerSCTP(t testing.TB, network string, lcOpt ...*ListenConfig) 
 	}
 
 	listen := func(net, addr string) net.Listener {
-		ln, err := lc.Listen(context.Background(), net, addr)
+		ln, err := lc.Listen(net, addr)
 		if err != nil {
 			t.Helper()
 			t.Fatal(err)

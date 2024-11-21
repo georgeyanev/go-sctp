@@ -11,8 +11,7 @@ import (
 
 // serverSocket returns a listening sctpFD object that is ready for
 // asynchronous I/O using the network poller
-func serverSocket(ctx context.Context, network string, laddr *SCTPAddr, initMsg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (fd *sctpFD, err error) {
+func serverSocket(network string, laddr *SCTPAddr, lc *ListenConfig) (fd *sctpFD, err error) {
 
 	log.Printf("gId: %d,func serverSocket", getGoroutineID())
 
@@ -28,7 +27,7 @@ func serverSocket(ctx context.Context, network string, laddr *SCTPAddr, initMsg 
 	}
 
 	fd = newFD(family, network)
-	if err = fd.listen(ctx, s, laddr, listenerBacklog(), initMsg, ctrlCtxFn); err != nil {
+	if err = fd.listen(s, laddr, listenerBacklog(), lc); err != nil {
 		_ = unix.Close(s)
 		return nil, err
 	}

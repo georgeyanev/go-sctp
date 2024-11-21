@@ -1,7 +1,6 @@
 package sctp
 
 import (
-	"context"
 	"errors"
 	"log"
 	"net"
@@ -59,7 +58,7 @@ type ListenConfig struct {
 // [ListenConfig.Listen].
 func Listen(network, address string) (net.Listener, error) {
 	var lc ListenConfig
-	return lc.Listen(context.Background(), network, address)
+	return lc.Listen(network, address)
 }
 
 // ListenSCTP acts like [Listen] for SCTP networks.
@@ -70,36 +69,29 @@ func Listen(network, address string) (net.Listener, error) {
 // chosen.
 func ListenSCTP(network string, laddr *SCTPAddr) (*SCTPListener, error) {
 	var lc ListenConfig
-	return lc.ListenSCTP(context.Background(), network, laddr)
+	return lc.ListenSCTP(network, laddr)
 }
 
-func (lc *ListenConfig) Listen(ctx context.Context, network, address string) (net.Listener, error) {
+func (lc *ListenConfig) Listen(network, address string) (net.Listener, error) {
 	// resolve the address
 	laddr, err := resolveSCTPAddr("listen", network, address, nil)
 	if err != nil {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: nil, Err: err}
 	}
-	return lc.ListenSCTP(ctx, network, laddr)
+	return lc.ListenSCTP(network, laddr)
 }
 
-func (lc *ListenConfig) ListenSCTP(ctx context.Context, network string, laddr *SCTPAddr) (*SCTPListener, error) {
+func (lc *ListenConfig) ListenSCTP(network string, laddr *SCTPAddr) (*SCTPListener, error) {
 	// check network
 	switch network {
 	case "sctp", "sctp4", "sctp6":
 	default:
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr.opAddr(), Err: net.UnknownNetworkError(network)}
 	}
-	return listenSCTP(ctx, network, laddr, lc)
+	return listenSCTP(network, laddr, lc)
 }
 
-func listenSCTP(ctx context.Context, network string, laddr *SCTPAddr, lc *ListenConfig) (*SCTPListener, error) {
-	var ctrlCtxFn func(cxt context.Context, network, address string, c syscall.RawConn) error
-	if lc.Control != nil {
-		ctrlCtxFn = func(cxt context.Context, network, address string, c syscall.RawConn) error {
-			return lc.Control(network, address, c)
-		}
-	}
-
+func listenSCTP(network string, laddr *SCTPAddr, lc *ListenConfig) (*SCTPListener, error) {
 	if lc.InitMsg.NumOstreams == 0 { // set default value
 		lc.InitMsg.NumOstreams = 10
 	}
@@ -107,7 +99,7 @@ func listenSCTP(ctx context.Context, network string, laddr *SCTPAddr, lc *Listen
 		lc.InitMsg.MaxInstreams = 10
 	}
 
-	fd, err := serverSocket(ctx, network, laddr, &lc.InitMsg, ctrlCtxFn)
+	fd, err := serverSocket(network, laddr, lc)
 	if err != nil {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr.opAddr(), Err: err}
 	}

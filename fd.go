@@ -62,22 +62,21 @@ func (fd *sctpFD) bind(laddr *SCTPAddr, bindMode int) error {
 	return nil
 }
 
-func (fd *sctpFD) listen(ctx context.Context, sysfd int, laddr *SCTPAddr, backlog int, initMsg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) error {
+func (fd *sctpFD) listen(sysfd int, laddr *SCTPAddr, backlog int, lc *ListenConfig) error {
 	var err error
 	if err = setDefaultListenerSockopts(sysfd); err != nil {
 		return err
 	}
 
-	if ctrlCtxFn != nil {
+	if lc.Control != nil {
 		c := &rawConnDummy{fd: sysfd}
-		if err = ctrlCtxFn(ctx, fd.ctrlNetwork(), laddr.String(), c); err != nil {
+		if err = lc.Control(fd.ctrlNetwork(), laddr.String(), c); err != nil {
 			return err
 		}
 	}
 
 	// set init options (SCTP initMSG)
-	if err = setInitOpts(sysfd, initMsg); err != nil {
+	if err = setInitOpts(sysfd, &lc.InitMsg); err != nil {
 		return err
 	}
 

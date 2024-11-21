@@ -28,7 +28,6 @@ type InitMsg struct {
 	MaxInitTimeout uint16
 }
 
-// TODO: revise usage of Context in listening
 // TODO: Add test from net.tcpsock_test.go and tcpsock_unix_test.go
 // TODO: Add test from net.net_test.go (regarding Closing, Close read, close write etc)
 // TODO: Add test from net.protoconn_test.go (regarding specific methods of Conn, SCTPConn etc)
@@ -37,7 +36,7 @@ type InitMsg struct {
 // TODO: Add test from conn_test.go
 // TODO: Add test from dial_unix_test.go
 // TODO: Test for timeouts with Accept (setReadDeadLine)
-// TODO: Set finalizer for FD?
+// TODO: Set finalizer for sctpFD?
 
 func getGoroutineID() uint64 {
 	buf := make([]byte, 64)
