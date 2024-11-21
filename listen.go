@@ -107,7 +107,7 @@ func listenSCTP(ctx context.Context, network string, laddr *SCTPAddr, lc *Listen
 		lc.InitMsg.MaxInstreams = 10
 	}
 
-	fd, err := serverSocketNew(ctx, network, laddr, &lc.InitMsg, ctrlCtxFn)
+	fd, err := serverSocket(ctx, network, laddr, &lc.InitMsg, ctrlCtxFn)
 	if err != nil {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr.opAddr(), Err: err}
 	}
@@ -121,7 +121,7 @@ func (ln *SCTPListener) Accept() (net.Conn, error) {
 }
 
 // AcceptSCTP accepts the next incoming call and returns the new connection.
-func (ln *SCTPListener) AcceptSCTP() (*SCTPConnNew, error) {
+func (ln *SCTPListener) AcceptSCTP() (*SCTPConn, error) {
 	log.Printf("gId %d: func ln.AcceptSCTP", getGoroutineID()) // TODO: remove()
 	if !ln.ok() {
 		return nil, syscall.EINVAL
@@ -230,7 +230,7 @@ func (ln *SCTPListener) close() error {
 	return ln.fd.f.Close()
 }
 
-func (ln *SCTPListener) accept() (*SCTPConnNew, error) {
+func (ln *SCTPListener) accept() (*SCTPConn, error) {
 	if !ln.ok() {
 		return nil, errEINVAL
 	}

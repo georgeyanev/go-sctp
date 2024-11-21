@@ -7,7 +7,6 @@
 package sctp
 
 import (
-	"context"
 	"log"
 	"net"
 	"testing"
@@ -100,7 +99,7 @@ func TestSCTPServer(t *testing.T) {
 				}
 				d := Dialer{Timeout: someTimeout}
 				log.Printf("gID: %d, about to dial %s", getGoroutineID(), tt.taddr+":"+port)
-				c, err := d.Dial(context.Background(), tt.tnet, tt.taddr+":"+port)
+				c, err := d.Dial(tt.tnet, tt.taddr+":"+port)
 				if err != nil {
 					if perr := parseDialError(err); perr != nil {
 						t.Error(perr)

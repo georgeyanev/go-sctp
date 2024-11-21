@@ -33,11 +33,11 @@ func (r rawConnDummy) Control(f func(uintptr)) error {
 	return nil
 }
 
-func (r rawConnDummy) Read(f func(uintptr) bool) error {
+func (r rawConnDummy) Read(_ func(uintptr) bool) error {
 	panic("not implemented")
 }
 
-func (r rawConnDummy) Write(f func(uintptr) bool) error {
+func (r rawConnDummy) Write(_ func(uintptr) bool) error {
 	panic("not implemented")
 }
 
@@ -154,6 +154,42 @@ func (fd *sctpFD) accept() (*sctpFD, error) {
 	newSctpFD.refreshRemoteAddr()
 
 	return newSctpFD, nil
+}
+
+func (fd *sctpFD) dial(ctx context.Context, s int, laddr *SCTPAddr, raddr *SCTPAddr, initMsg *InitMsg,
+	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) error {
+	log.Printf("gId: %d, func fd.dial", getGoroutineID())
+
+	if ctrlCtxFn != nil {
+		c := rawConnDummy{fd: s}
+		if err := ctrlCtxFn(ctx, fd.ctrlNetwork(), laddr.String(), c); err != nil {
+			return err
+		}
+	}
+
+	// set SCTP initialization options
+	if err := setInitOpts(s, initMsg); err != nil {
+		return err
+	}
+
+	// if local address is not null set reuse address option and bind it
+	if laddr != nil {
+		if err := setDefaultListenerSockopts(s); err != nil {
+			return err
+		}
+		// bind
+		if err := sysBindx(s, fd.family, SCTP_SOCKOPT_BINDX_ADD, laddr); err != nil {
+			return err
+		}
+	}
+
+	if err := fd.connect(ctx, s, raddr); err != nil {
+		return err
+	}
+
+	fd.refreshLocalAddr()
+	fd.refreshRemoteAddr()
+	return nil
 }
 
 func (fd *sctpFD) refreshLocalAddr() {

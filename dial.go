@@ -90,7 +90,7 @@ type Dialer struct {
 // For Unix networks, the address must be a file system path.
 func Dial(network, address string) (net.Conn, error) {
 	var d Dialer
-	return d.Dial(context.Background(), network, address)
+	return d.Dial(network, address)
 }
 
 // DialSCTP acts like [Dial] taking SCTP addresses and returning a SCTPConn.
@@ -100,7 +100,18 @@ func Dial(network, address string) (net.Conn, error) {
 func DialSCTP(network string, laddr, raddr *SCTPAddr) (*SCTPConn, error) {
 	var d Dialer
 	d.LocalAddr = laddr
-	return d.DialSCTP(context.Background(), network, raddr)
+	return d.DialSCTP(network, raddr)
+}
+
+// Dial connects to the address on the named network.
+//
+// See func Dial for a description of the network and address
+// parameters.
+//
+// Dial uses [context.Background] internally; to specify the context, use
+// [Dialer.DialContext].
+func (d *Dialer) Dial(network, address string) (net.Conn, error) {
+	return d.DialContext(context.Background(), network, address)
 }
 
 // Dial connects to the address on the named network using the provided context.
@@ -111,7 +122,7 @@ func DialSCTP(network string, laddr, raddr *SCTPAddr) (*SCTPConn, error) {
 // connected, any expiration of the context will not affect the
 // connection.
 
-func (d *Dialer) Dial(ctx context.Context, network string, address string) (net.Conn, error) {
+func (d *Dialer) DialContext(ctx context.Context, network string, address string) (net.Conn, error) {
 	log.Printf("gId: %d, func Dial", getGoroutineID())
 	// resolve with no context
 	raddr, err := resolveSCTPAddr("dial", network, address, d.LocalAddr)
@@ -119,12 +130,16 @@ func (d *Dialer) Dial(ctx context.Context, network string, address string) (net.
 	if err != nil {
 		return nil, &net.OpError{Op: "dial", Net: network, Source: nil, Addr: nil, Err: err}
 	}
-	return d.DialSCTP(ctx, network, raddr)
+	return d.DialSCTPContext(ctx, network, raddr)
 }
 
-// DialSCTP acts like [Dial] taking SCTP addresses and returning a SCTPConn.
-func (d *Dialer) DialSCTP(ctx context.Context, network string, raddr *SCTPAddr) (*SCTPConn, error) {
-	log.Printf("gId: %d, func d.DialSCTP", getGoroutineID())
+func (d *Dialer) DialSCTP(network string, raddr *SCTPAddr) (*SCTPConn, error) {
+	return d.DialSCTPContext(context.Background(), network, raddr)
+}
+
+// DialSCTPContext acts like [DialContext] taking SCTP addresses and returning a SCTPConn.
+func (d *Dialer) DialSCTPContext(ctx context.Context, network string, raddr *SCTPAddr) (*SCTPConn, error) {
+	log.Printf("gId: %d, func d.DialSCTPContext", getGoroutineID())
 	if ctx == nil {
 		panic("nil context")
 	}
@@ -175,9 +190,10 @@ func dialSCTP(ctx context.Context, network string, raddr *SCTPAddr, d *Dialer) (
 		d.InitMsg.MaxInstreams = 10
 	}
 
-	c, err := clientSocket(ctx, network, d.LocalAddr, raddr, &d.InitMsg, ctrlCtxFn)
+	fd, err := clientSocket(ctx, network, d.LocalAddr, raddr, &d.InitMsg, ctrlCtxFn)
 	if err != nil {
 		return nil, &net.OpError{Op: "dial", Net: network, Source: d.LocalAddr.opAddr(), Addr: raddr.opAddr(), Err: err}
 	}
-	return &SCTPConn{c}, nil
+
+	return newSCTPConnNew(fd), nil
 }

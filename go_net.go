@@ -346,7 +346,6 @@ func ipToSockaddrInet6(ip net.IP, port int, zone string) (syscall.SockaddrInet6,
 	return sa, nil
 }
 
-// TODO: replace syscall. with unix.
 // Change: changed name from sockaddr;
 //
 //	changed return type
@@ -813,40 +812,35 @@ func (canceledError) Error() string { return "operation was canceled" }
 
 func (canceledError) Is(err error) bool { return err == context.Canceled }
 
-func connect(fd, family int, network string, ctx context.Context, raddr *SCTPAddr) (c *conn, ret error) {
-	err := rawConnect(fd, family, raddr)
+func (fd *sctpFD) connect(ctx context.Context, s int, raddr *SCTPAddr) (ret error) {
+	err := sysConnect(s, fd.family, raddr)
 	switch err {
 	case unix.EINPROGRESS, unix.EALREADY, unix.EINTR:
 	case nil, unix.EISCONN:
 		select {
 		case <-ctx.Done():
-			_ = c.Close()
-			return nil, ctx.Err()
+			return ctx.Err()
 		default:
 		}
 
-		c, err = newConn(fd, family, network)
-		if err != nil {
-			return nil, err
+		// register our connecting socket with the go runtime network poller
+		if err = fd.init(s); err != nil {
+			return err
 		}
-
-		return c, nil
+		runtime.KeepAlive(fd)
+		return nil
 
 	default:
-		_ = c.Close()
-		return nil, os.NewSyscallError("connect", err)
+		return os.NewSyscallError("connect", err)
 	}
 
-	// Change: By creating our connection here we register the soon-to-be
-	// connected fd with the go runtime network poller.
-	// We have to do this here in order for the deadlines below to work.
-	c, err = newConn(fd, family, network)
-	if err != nil {
-		return nil, err
+	// register our connecting socket with the go runtime network poller
+	if err = fd.init(s); err != nil {
+		return err
 	}
 
 	if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
-		c.SetWriteDeadline(deadline)
+		fd.f.SetWriteDeadline(deadline)
 	}
 
 	// Start the "interrupter" goroutine, if this context might be canceled.
@@ -867,11 +861,10 @@ func connect(fd, family int, network string, ctx context.Context, raddr *SCTPAdd
 			// == nil). Because we've now poisoned the connection
 			// by making it unwritable, don't return a successful
 			// dial. This was issue 16523.
-			_ = c.Close()
-			c = nil
 			ret = ctxErr
-		} else if c != nil && ret == nil {
-			c.SetWriteDeadline(noDeadline) // restore the writeDeadline
+			fd.close()
+		} else if ret == nil {
+			fd.f.SetWriteDeadline(noDeadline) // restore the writeDeadline
 		}
 	}()
 	go func() {
@@ -881,7 +874,7 @@ func connect(fd, family int, network string, ctx context.Context, raddr *SCTPAdd
 			case <-ctxDone:
 				// Force the runtime's poller to immediately give up
 				// waiting for writability, unblocking waitWrite below.
-				c.SetWriteDeadline(aLongTimeAgo)
+				fd.f.SetWriteDeadline(aLongTimeAgo)
 				testHookCanceledDial()
 				interruptRes <- ctx.Err()
 				return
@@ -889,11 +882,12 @@ func connect(fd, family int, network string, ctx context.Context, raddr *SCTPAdd
 				interruptRes <- nil
 				return
 			case <-time.After(time.Duration(waitTimeMillis) * time.Millisecond):
+				// workaround for https://github.com/golang/go/issues/70373
 				log.Printf("TIMER INFLICTED WAKEUP...")
 				waitTimeMillis *= 10
 				// Force the runtime's poller to immediately give up
 				// waiting for writability, unblocking waitWrite below.
-				c.SetWriteDeadline(aLongTimeAgo)
+				fd.f.SetWriteDeadline(aLongTimeAgo)
 			}
 		}
 	}()
@@ -908,7 +902,7 @@ func connect(fd, family int, network string, ctx context.Context, raddr *SCTPAdd
 		// function should return false the first time and true afterward.
 		// See the os.rawConn.Write function for details.
 		dummyFuncCalled := false
-		doErr := c.rc.Write(func(fd uintptr) bool {
+		doErr := fd.rc.Write(func(fd uintptr) bool {
 			if !dummyFuncCalled {
 				dummyFuncCalled = true
 				return false // first time only causing the call to WaitWrite
@@ -918,24 +912,24 @@ func connect(fd, family int, network string, ctx context.Context, raddr *SCTPAdd
 		if doErr != nil {
 			select {
 			case <-ctxDone:
-				_ = c.Close()
-				return nil, ctx.Err()
+				fd.close()
+				return ctx.Err()
 			default:
 			}
 			// here if the error is timeout then this is caused by our wakeup timer (workaround for issue #70373)
 			// in that case we just skip to SO_ERROR checking
 			log.Printf("rc.Write returned error: %T, %v, isTimeout: %v", doErr, doErr, errors.Is(doErr, os.ErrDeadlineExceeded))
 			if !errors.Is(doErr, os.ErrDeadlineExceeded) {
-				_ = c.Close()
-				return nil, doErr
+				fd.close()
+				return doErr
 			}
 		}
 
-		err = c.SetWriteDeadline(noDeadline) // restore the writeDeadline
+		err = fd.f.SetWriteDeadline(noDeadline) // restore the writeDeadline
 		if err != nil {
-			_ = c.Close()
+			fd.close()
 			log.Printf("4 f.SetWriteDeadline returned error: %v", err)
-			return nil, err
+			return err
 		}
 
 		// Performing multiple connect system calls on a
@@ -947,35 +941,35 @@ func connect(fd, family int, network string, ctx context.Context, raddr *SCTPAdd
 		// succeeded or failed. See issue 7474 for further
 		// details.
 		var nerr int
-		nerr, err = unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_ERROR)
+		nerr, err = unix.GetsockoptInt(s, unix.SOL_SOCKET, unix.SO_ERROR)
 		if err != nil {
-			_ = c.Close()
+			fd.close()
 			log.Printf("5 syscall.GetsockoptInt returned error: %v", err)
-			return nil, os.NewSyscallError("getsockopt", err)
+			return os.NewSyscallError("getsockopt", err)
 		}
 		log.Printf("SO_ERROR syscall.Errno is %d", nerr)
 
 		switch err = unix.Errno(nerr); err {
 		case unix.EINPROGRESS, unix.EALREADY, unix.EINTR:
 		case unix.EISCONN:
-			return c, nil
+			return nil
 		case unix.Errno(0):
 			// The runtime poller can wake us up spuriously;
 			// see issues 14548 and 19289. Check that we are
 			// really connected; if not, wait again.
 
 			log.Printf("syscall.Errno is 0, calling rawGetpeername")
-			if _, err = syscall.Getpeername(fd); err == nil {
-				return c, nil
+			if _, err = syscall.Getpeername(s); err == nil {
+				return nil
 			} else {
 				log.Printf("Getpeername returned error: %v", err)
 			}
 
 		default:
-			_ = c.Close()
+			fd.close()
 			log.Printf("SO_ERROR: %d, %v", err.(syscall.Errno), err)
-			return nil, os.NewSyscallError("connect", err)
+			return os.NewSyscallError("connect", err)
 		}
-		runtime.KeepAlive(c)
+		runtime.KeepAlive(fd)
 	}
 }

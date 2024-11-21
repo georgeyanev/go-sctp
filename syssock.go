@@ -9,35 +9,9 @@ import (
 	"syscall"
 )
 
-// serverSocket returns a listening conn object that is ready for
+// serverSocket returns a listening sctpFD object that is ready for
 // asynchronous I/O using the network poller
 func serverSocket(ctx context.Context, network string, laddr *SCTPAddr, initMsg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (*conn, error) {
-
-	log.Printf("gId: %d,func serverSocket", getGoroutineID())
-
-	family, ipv6only := favoriteAddrFamily(network, laddr, nil, "listen")
-	fd, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
-	if err != nil {
-		return nil, err
-	}
-
-	_ = setDefaultSockopts(fd, family, ipv6only)
-
-	c, err := newConn(fd, family, network)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = c.listen(ctx, laddr, listenerBacklog(), initMsg, ctrlCtxFn); err != nil {
-		_ = c.Close()
-		return nil, err
-	}
-
-	return c, nil
-}
-
-func serverSocketNew(ctx context.Context, network string, laddr *SCTPAddr, initMsg *InitMsg,
 	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (fd *sctpFD, err error) {
 
 	log.Printf("gId: %d,func serverSocket", getGoroutineID())
@@ -61,62 +35,30 @@ func serverSocketNew(ctx context.Context, network string, laddr *SCTPAddr, initM
 	return
 }
 
-// clientSocket returns a listening conn object that is ready for
+// serverSocket returns a listening sctpFD object that is ready for
 // asynchronous I/O using the network poller
 func clientSocket(ctx context.Context, network string, laddr, raddr *SCTPAddr, initMsg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (*conn, error) {
+	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (fd *sctpFD, err error) {
 
 	log.Printf("gId: %d, func clientSocket", getGoroutineID())
 
 	family, ipv6only := favoriteAddrFamily(network, laddr, raddr, "dial")
-	fd, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
+	s, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
 	if err != nil {
 		return nil, err
 	}
 
-	_ = setDefaultSockopts(fd, family, ipv6only)
-
-	return sysDial(fd, family, network, ctx, laddr, raddr, initMsg, ctrlCtxFn)
-}
-
-func sysDial(fd, family int, network string, ctx context.Context, laddr *SCTPAddr, raddr *SCTPAddr, msg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (*conn, error) {
-	log.Printf("gId: %d, func sysDial", getGoroutineID())
-
-	if ctrlCtxFn != nil {
-		c := rawConnDummy{fd: fd}
-		if err := ctrlCtxFn(ctx, ctrlNetwork(family, network), laddr.String(), c); err != nil {
-			return nil, err
-		}
-	}
-
-	// set SCTP initialization options
-	if err := setInitOpts(fd, msg); err != nil {
+	if err = setDefaultSockopts(s, family, ipv6only); err != nil {
+		_ = unix.Close(s)
 		return nil, err
 	}
 
-	// if local address is not null set reuse address option and bind it
-	if laddr != nil {
-		if err := setDefaultListenerSockopts(fd); err != nil {
-			return nil, err
-		}
-		// bind
-		if err := sysBindx(fd, family, SCTP_SOCKOPT_BINDX_ADD, laddr); err != nil {
-			return nil, err
-		}
-	}
-
-	c, err := connect(fd, family, network, ctx, raddr)
-	if err != nil {
+	fd = newFD(family, network)
+	if err = fd.dial(ctx, s, laddr, raddr, initMsg, ctrlCtxFn); err != nil {
+		_ = unix.Close(s)
 		return nil, err
 	}
-
-	// set local and remote addresses
-	var la, ra *SCTPAddr
-	la, _ = c.getLocalAddr()
-	ra, _ = c.getRemoteAddr()
-	c.setAddr(la, ra)
-	return c, nil
+	return
 }
 
 func sysBindx(fd, family, bindMode int, laddr *SCTPAddr) error {
@@ -132,10 +74,10 @@ func sysListen(sysfd, backlog int) error {
 	return os.NewSyscallError("listen", unix.Listen(sysfd, backlog))
 }
 
-func rawConnect(fd, family int, raddr *SCTPAddr) error {
+func sysConnect(fd, family int, raddr *SCTPAddr) error {
 	const SCTP_SOCKOPT_CONNECTX = 110
 
-	log.Printf("gId: %d, func rawConnect", getGoroutineID())
+	log.Printf("gId: %d, func sysConnect", getGoroutineID())
 
 	// accommodate wildcard addresses to point to local system
 	var finalRaddr *SCTPAddr
@@ -162,15 +104,4 @@ func rawConnect(fd, family int, raddr *SCTPAddr) error {
 		return err // we can not wrap here because we switch over this value
 	}
 	return nil
-}
-
-func ctrlNetwork(family int, network string) string {
-	switch network[len(network)-1] {
-	case '4', '6':
-		return network
-	}
-	if family == syscall.AF_INET {
-		return network + "4"
-	}
-	return network + "6"
 }

@@ -6,17 +6,13 @@ import (
 )
 
 type SCTPConn struct {
-	*conn
-}
-
-type SCTPConnNew struct {
-	connNew
+	conn
 }
 
 // BindAdd associates additional addresses with an already bound endpoint (i.e. socket).
 // If the endpoint supports dynamic address reconfiguration, BindAdd may cause an
 // endpoint to send the appropriate message to its peers to change the peers' address lists.
-func (c *SCTPConnNew) BindAdd(address string) error {
+func (c *SCTPConn) BindAdd(address string) error {
 	if !c.ok() {
 		return errEINVAL
 	}
@@ -31,7 +27,7 @@ func (c *SCTPConnNew) BindAdd(address string) error {
 	return nil
 }
 
-func (c *SCTPConnNew) BindAddSCTP(laddr *SCTPAddr) error {
+func (c *SCTPConn) BindAddSCTP(laddr *SCTPAddr) error {
 	if !c.ok() {
 		return errEINVAL
 	}
@@ -43,7 +39,7 @@ func (c *SCTPConnNew) BindAddSCTP(laddr *SCTPAddr) error {
 }
 
 // BindRemove remove some addresses with which a bound socket is associated.
-func (c *SCTPConnNew) BindRemove(address string) error {
+func (c *SCTPConn) BindRemove(address string) error {
 	if !c.ok() {
 		return errEINVAL
 	}
@@ -58,7 +54,7 @@ func (c *SCTPConnNew) BindRemove(address string) error {
 	return nil
 }
 
-func (c *SCTPConnNew) BindRemoveSCTP(laddr *SCTPAddr) error {
+func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 	if !c.ok() {
 		return errEINVAL
 	}
@@ -69,15 +65,15 @@ func (c *SCTPConnNew) BindRemoveSCTP(laddr *SCTPAddr) error {
 	return nil
 }
 
-func (c *SCTPConnNew) ReadMsg(b []byte) (int, bool, error) { return 0, true, nil }
+func (c *SCTPConn) ReadMsg(b []byte) (int, bool, error) { return 0, true, nil }
 
 //func (c *Conn) WriteMsgEor(b []byte, eor bool) (int, error) { return 0, nil }
 
-func (c *SCTPConnNew) WriteMsg(b []byte) (int, error) { return 0, nil }
+func (c *SCTPConn) WriteMsg(b []byte) (int, error) { return 0, nil }
 
-func newSCTPConnNew(fd *sctpFD) *SCTPConnNew {
+func newSCTPConnNew(fd *sctpFD) *SCTPConn {
 	_ = fd.setNoDelay(true)
 
 	// TO DO: set heartbeat disable here or heartbeat interval
-	return &SCTPConnNew{connNew{fd: fd}}
+	return &SCTPConn{conn{fd: fd}}
 }

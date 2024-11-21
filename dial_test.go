@@ -200,7 +200,7 @@ func TestDialerLocalAddrSCTP(t *testing.T) {
 			addr = lss[1].Listener.Addr().String()
 		}
 		log.Printf("gId: %d, About to dial\n", getGoroutineID())
-		c, err := d.Dial(context.Background(), tt.network, addr)
+		c, err := d.Dial(tt.network, addr)
 		if err == nil && tt.error != nil || err != nil && tt.error == nil {
 			t.Errorf("%s %v->%s: got %v; want %v", tt.network, tt.laddr, tt.raddr, err, tt.error)
 		}
@@ -230,7 +230,7 @@ func TestDialTimeout(t *testing.T) {
 	errc := make(chan error, 1)
 	connc := make(chan net.Conn, 1)
 	go func() {
-		if c, err := d.Dial(context.Background(), "sctp", blackholeIPPort); err != nil {
+		if c, err := d.Dial("sctp", blackholeIPPort); err != nil {
 			errc <- err
 		} else {
 			connc <- c
@@ -261,7 +261,7 @@ func TestDialContextTimeout(t *testing.T) {
 	errc := make(chan error, 1)
 	connc := make(chan net.Conn, 1)
 	go func() {
-		if c, err := d.Dial(ctx, "sctp", blackholeIPPort); err != nil {
+		if c, err := d.DialContext(ctx, "sctp", blackholeIPPort); err != nil {
 			errc <- err
 		} else {
 			connc <- c
@@ -297,7 +297,7 @@ func TestDialCancel(t *testing.T) {
 	errc := make(chan error, 1)
 	connc := make(chan net.Conn, 1)
 	go func() {
-		if c, err := d.Dial(ctx, "sctp", blackholeIPPort); err != nil {
+		if c, err := d.DialContext(ctx, "sctp", blackholeIPPort); err != nil {
 			errc <- err
 		} else {
 			connc <- c
@@ -389,7 +389,7 @@ func TestCancelAfterDialSCTP(t *testing.T) {
 		ctx, cancelFunc := context.WithCancel(context.Background())
 		defer cancelFunc()
 		d := &Dialer{}
-		c, err := d.Dial(ctx, "sctp", ln.Addr().String())
+		c, err := d.DialContext(ctx, "sctp", ln.Addr().String())
 
 		// Immediately after dialing, request cancellation and sleep.
 		// Before Issue 15078 was fixed, this would cause subsequent operations
@@ -523,7 +523,7 @@ func TestDialerControlSCTP(t *testing.T) {
 			ln := newLocalListenerSCTP(t, network)
 			defer ln.Close()
 			d := Dialer{Control: controlOnConnSetup}
-			c, err := d.Dial(context.Background(), network, ln.Addr().String())
+			c, err := d.Dial(network, ln.Addr().String())
 			if err != nil {
 				t.Error(err)
 				continue
@@ -544,7 +544,7 @@ func TestDialerControlContext(t *testing.T) {
 					id = ctx.Value("id").(int)
 					return controlOnConnSetup(network, address, c)
 				}}
-				c, err := d.Dial(context.WithValue(context.Background(), "id", i+1), network, ln.Addr().String())
+				c, err := d.DialContext(context.WithValue(context.Background(), "id", i+1), network, ln.Addr().String())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -573,7 +573,7 @@ func TestDialWithNonZeroDeadline(t *testing.T) {
 
 	ctx := contextWithNonZeroDeadline{Context: context.Background()}
 	var dialer Dialer
-	c, err := dialer.Dial(ctx, "sctp", ":"+port)
+	c, err := dialer.DialContext(ctx, "sctp", ":"+port)
 	if err != nil {
 		t.Fatal(err)
 	}

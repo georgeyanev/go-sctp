@@ -7,12 +7,11 @@ import (
 	"time"
 )
 
-// TODO: all names with suffix New should replace the old names, and the old names should be deprecated/removed
-type connNew struct {
+type conn struct {
 	fd *sctpFD
 }
 
-func (c *connNew) Read(b []byte) (int, error) {
+func (c *conn) Read(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL
 	}
@@ -23,7 +22,7 @@ func (c *connNew) Read(b []byte) (int, error) {
 	return n, err
 }
 
-func (c *connNew) Write(b []byte) (int, error) {
+func (c *conn) Write(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL
 	}
@@ -34,7 +33,7 @@ func (c *connNew) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (c *connNew) SetDeadline(t time.Time) error {
+func (c *conn) SetDeadline(t time.Time) error {
 	if !c.ok() {
 		return errEINVAL
 	}
@@ -44,7 +43,7 @@ func (c *connNew) SetDeadline(t time.Time) error {
 	return nil
 }
 
-func (c *connNew) SetReadDeadline(t time.Time) error {
+func (c *conn) SetReadDeadline(t time.Time) error {
 	if !c.ok() {
 		return errEINVAL
 	}
@@ -54,7 +53,7 @@ func (c *connNew) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-func (c *connNew) SetWriteDeadline(t time.Time) error {
+func (c *conn) SetWriteDeadline(t time.Time) error {
 	if !c.ok() {
 		return errEINVAL
 	}
@@ -64,7 +63,7 @@ func (c *connNew) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-func (c *connNew) Close() error {
+func (c *conn) Close() error {
 	if !c.ok() {
 		return syscall.EINVAL
 	}
@@ -75,14 +74,14 @@ func (c *connNew) Close() error {
 	return err
 }
 
-func (c *connNew) LocalAddr() net.Addr {
+func (c *conn) LocalAddr() net.Addr {
 	if !c.ok() {
 		return nil
 	}
 	return c.fd.laddr.Load()
 }
 
-func (c *connNew) RemoteAddr() net.Addr {
+func (c *conn) RemoteAddr() net.Addr {
 	if !c.ok() {
 		return nil
 	}
@@ -92,4 +91,4 @@ func (c *connNew) RemoteAddr() net.Addr {
 // TODO: write SCTP specific functions, i.e. specifying EOF upon return, specifying input/output stream etc.
 // bool is EOR
 
-func (c *connNew) ok() bool { return c != nil && c.fd != nil }
+func (c *conn) ok() bool { return c != nil && c.fd != nil }
