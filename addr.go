@@ -12,7 +12,7 @@ import (
 	"unsafe"
 )
 
-// SCTPAddr represents the address of a SCTP endpoint. It contains an address array
+// SCTPAddr represents the address of an SCTP endpoint. It contains an address array
 // because of the multi-homing feature of SCTP
 type SCTPAddr struct {
 	IPAddrs []net.IPAddr
@@ -145,6 +145,13 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 	}
 
 	return buf, nil
+}
+
+// ResolveSCTPAddr returns an address of a SCTP end point.
+// The network must be a SCTP network name.
+// See func [Dial] for a description of the network and address parameters.
+func ResolveSCTPAddr(network, addr string) (*SCTPAddr, error) {
+	return resolveSCTPAddr("resolve", network, addr, nil)
 }
 
 func resolveSCTPAddr(op, network, addr string, hint *SCTPAddr) (*SCTPAddr, error) {

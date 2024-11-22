@@ -11,6 +11,21 @@ type conn struct {
 	fd *sctpFD
 }
 
+// Read receives data from the peer of an SCTP endpoint.
+// It gives access to only basic SCTP protocol
+// features.  If either peer in the association uses multiple streams,
+// or sends unordered data, this call will usually be inadequate and may
+// deliver the data in unpredictable ways.
+// Read return data from any stream, but the caller
+// cannot distinguish the different streams. This may result in data
+// seeming to arrive out of order. Similarly, if a DATA chunk is sent
+// unordered, Read() provide no indication.
+//
+// If the buffer supplied is not large enough to hold a
+// complete SCTP message, the Read call acts like a stream socket and
+// returns as much data as will fit in the buffer.
+//
+// If you want specific SCTP features, use the ReadMsg() function.
 func (c *conn) Read(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL
@@ -22,6 +37,21 @@ func (c *conn) Read(b []byte) (int, error) {
 	return n, err
 }
 
+// Write transmit data to the peer of an SCTP endpoint.
+// It gives access to only basic SCTP protocol features.
+// SCTP has the concept of multiple streams in one association.
+// Write do not allow the caller to specify on which stream a
+// message should be sent. The system uses stream 0 as the default
+// stream.
+// SCTP is message based. The msg buffer above in Write
+// is considered to be a single message.
+//
+// Sending a message using Write is atomic.
+// The maximum size of the buffer passed to Write is limited by
+// the write buffer size of the socket.
+// See: https://datatracker.ietf.org/doc/html/rfc6458#page-67
+//
+// If you want specific SCTP features, use the WriteMsg() function.
 func (c *conn) Write(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL

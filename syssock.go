@@ -65,7 +65,7 @@ func sysBindx(fd, family, bindMode int, laddr *SCTPAddr) error {
 	if err != nil {
 		return &net.AddrError{Err: err.Error(), Addr: laddr.String()}
 	}
-	return os.NewSyscallError("bindx", unix.SetsockoptString(fd, SOL_SCTP, bindMode, string(buf)))
+	return os.NewSyscallError("bindx", unix.SetsockoptString(fd, unix.IPPROTO_SCTP, bindMode, string(buf)))
 }
 
 func sysListen(sysfd, backlog int) error {
@@ -99,7 +99,7 @@ func sysConnect(fd, family int, raddr *SCTPAddr) error {
 		return &net.AddrError{Err: err.Error(), Addr: finalRaddr.String()}
 	}
 	// in one-to-one SCTP mode (SOCK_STREAM socket type) we don't want the assoc_id
-	if err = unix.SetsockoptString(fd, SOL_SCTP, SCTP_SOCKOPT_CONNECTX, string(buf)); err != nil {
+	if err = unix.SetsockoptString(fd, unix.IPPROTO_SCTP, SCTP_SOCKOPT_CONNECTX, string(buf)); err != nil {
 		return err // we can not wrap here because we switch over this value
 	}
 	return nil

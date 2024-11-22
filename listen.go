@@ -176,7 +176,7 @@ func (ln *SCTPListener) BindAddSCTP(laddr *SCTPAddr) error {
 	if !ln.ok() {
 		return errEINVAL
 	}
-	if err := ln.fd.bind(laddr, SCTP_SOCKOPT_BINDX_ADD); err != nil {
+	if err := ln.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_ADD); err != nil {
 		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
 			Err: errors.New("add address: " + laddr.String() + ": " + err.Error())}
 	}
@@ -206,7 +206,7 @@ func (ln *SCTPListener) BindRemoveSCTP(laddr *SCTPAddr) error {
 	if !ln.ok() {
 		return errEINVAL
 	}
-	if err := ln.fd.bind(laddr, SCTP_SOCKOPT_BINDX_REM); err != nil {
+	if err := ln.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_REM); err != nil {
 		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
 			Err: errors.New("remove address: " + laddr.String() + ": " + err.Error())}
 	}

@@ -31,7 +31,7 @@ func (c *SCTPConn) BindAddSCTP(laddr *SCTPAddr) error {
 	if !c.ok() {
 		return errEINVAL
 	}
-	if err := c.fd.bind(laddr, SCTP_SOCKOPT_BINDX_ADD); err != nil {
+	if err := c.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_ADD); err != nil {
 		return &net.OpError{Op: "bindx", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(),
 			Err: errors.New("add address: " + laddr.String() + ": " + err.Error())}
 	}
@@ -58,7 +58,7 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 	if !c.ok() {
 		return errEINVAL
 	}
-	if err := c.fd.bind(laddr, SCTP_SOCKOPT_BINDX_REM); err != nil {
+	if err := c.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_REM); err != nil {
 		return &net.OpError{Op: "bindx", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(),
 			Err: errors.New("remove address: " + laddr.String() + ": " + err.Error())}
 	}
@@ -70,6 +70,62 @@ func (c *SCTPConn) ReadMsg(b []byte) (int, bool, error) { return 0, true, nil }
 //func (c *Conn) WriteMsgEor(b []byte, eor bool) (int, error) { return 0, nil }
 
 func (c *SCTPConn) WriteMsg(b []byte) (int, error) { return 0, nil }
+
+// SetNoDelay turns on/off any Nagle-like algorithm. This means that
+// packets are generally sent as soon as possible, and no unnecessary
+// delays are introduced, at the cost of more packets in the network.
+// In particular, not using any Nagle-like algorithm might reduce the
+// bundling of small user messages in cases where this would require an
+// additional delay.
+// Turning this option on disables any Nagle-like algorithm.
+func (c *SCTPConn) SetNoDelay(noDelay bool) error {
+	if !c.ok() {
+		return errEINVAL
+	}
+	if err := c.fd.setNoDelay(noDelay); err != nil {
+		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return nil
+}
+
+func (c *SCTPConn) GetNoDelay() (bool, error) {
+	if !c.ok() {
+		return false, errEINVAL
+	}
+	b, err := c.fd.getNoDelay()
+	if err != nil {
+		return false, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return b, nil
+}
+
+// SetDisableFragments turns an on/off flag. If enabled, no SCTP message
+// fragmentation will be performed. The effect of enabling this option
+// is that if a message being sent exceeds the current Path MTU (PMTU)
+// size, the message will not be sent and instead an error will be
+// indicated to the user. If this option is disabled (the default),
+// then a message exceeding the size of the PMTU will be fragmented and
+// reassembled by the peer.
+func (c *SCTPConn) SetDisableFragments(disableFragments bool) error {
+	if !c.ok() {
+		return errEINVAL
+	}
+	if err := c.fd.setDisableFragments(disableFragments); err != nil {
+		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return nil
+}
+
+func (c *SCTPConn) GetDisableFragments() (bool, error) {
+	if !c.ok() {
+		return false, errEINVAL
+	}
+	b, err := c.fd.getDisableFragments()
+	if err != nil {
+		return false, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return b, nil
+}
 
 func newSCTPConnNew(fd *sctpFD) *SCTPConn {
 	_ = fd.setNoDelay(true)

@@ -379,24 +379,6 @@ func sockaddrInet6ToBuf(sa6 syscall.SockaddrInet6) ([]byte, error) {
 	return unsafe.Slice((*byte)(unsafe.Pointer(&rawSa6)), syscall.SizeofSockaddrInet6), nil
 }
 
-// Changes: set default options for SCTP only
-// Note that SCTP is connection-oriented in nature, and it does not support broadcast or multicast
-// communications, as UDP does.
-func setDefaultSockopts(s, family int, ipv6only bool) error {
-	if family == syscall.AF_INET6 {
-		// Allow both IP versions even if the OS default
-		// is otherwise. Note that some operating systems
-		// never admit this option.
-		_ = syscall.SetsockoptInt(s, syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, boolint(ipv6only))
-	}
-	return nil
-}
-
-func setDefaultListenerSockopts(s int) error {
-	// Allow reuse of recently-used addresses.
-	return os.NewSyscallError("setsockopt", syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1))
-}
-
 // Boolean to int.
 func boolint(b bool) int {
 	if b {
