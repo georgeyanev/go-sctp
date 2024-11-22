@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"reflect"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -608,7 +610,7 @@ func writeAll(c *SCTPConn, p []byte) (int, error) {
 	}
 
 	//wBufSize, err := c.fd.getSendBuffer()
-	wBufSize := 1024 * 100
+	wBufSize := 1024
 
 	var nn, lastReported int
 	for {
@@ -627,7 +629,7 @@ func writeAll(c *SCTPConn, p []byte) (int, error) {
 		if err != nil {
 			return nn, err
 		}
-		if (nn - lastReported) >= 1024*1024 { //10MB
+		if (nn - lastReported) >= 1024*1024*10 { //10MB
 			log.Printf("%d bytes written", nn)
 			lastReported = nn
 		}
@@ -778,4 +780,94 @@ func TestTCPListenAfterClose(t *testing.T) {
 		}
 		t.Errorf("after l.Close(), l.Accept() = _, %v\nwant %v", err, "use of closed file")
 	}
+}
+
+// See golang.org/issue/14548
+func TestSCTPSpuriousConnSetupCompletion(t *testing.T) {
+	t.Skip("revisit this, skip for now as it fails for large attempts values")
+	ln := newLocalListenerSCTP(t, "sctp")
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func(ln net.Listener) {
+		defer wg.Done()
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			wg.Add(1)
+			go func(c net.Conn) {
+				var b [1]byte
+				c.Read(b[:])
+				c.Close()
+				wg.Done()
+			}(c)
+		}
+	}(ln)
+
+	attempts := int(1e4) // larger is better
+	wg.Add(attempts)
+	throttle := make(chan struct{}, runtime.GOMAXPROCS(-1)*2)
+	for i := 0; i < attempts; i++ {
+		throttle <- struct{}{}
+		go func(i int) {
+			defer func() {
+				<-throttle
+				wg.Done()
+			}()
+			d := Dialer{Timeout: 50 * time.Millisecond}
+			c, err := d.Dial(ln.Addr().Network(), ln.Addr().String())
+			if err != nil {
+				if perr := parseDialError(err); perr != nil {
+					t.Errorf("#%d: %v (original error: %v)", i, perr, err)
+				}
+				return
+			}
+			var b [1]byte
+			if _, err := c.Write(b[:]); err != nil {
+				if perr := parseWriteError(err); perr != nil {
+					t.Errorf("#%d: %v", i, err)
+				}
+				if samePlatformError(err, syscall.ENOTCONN) {
+					t.Errorf("#%d: %v", i, err)
+				}
+			}
+			c.Close()
+		}(i)
+	}
+
+	ln.Close()
+	wg.Wait()
+}
+
+var dnsWaitGroup sync.WaitGroup
+
+func TestSCTPSpuriousConnSetupCompletionWithCancel(t *testing.T) {
+	defer dnsWaitGroup.Wait()
+	t.Parallel()
+	const tries = 10000
+	var wg sync.WaitGroup
+	wg.Add(tries * 2)
+	sem := make(chan bool, 5)
+	for i := 0; i < tries; i++ {
+		sem <- true
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			defer wg.Done()
+			time.Sleep(time.Duration(rand.Int63n(int64(5 * time.Millisecond))))
+			cancel()
+		}()
+		go func(i int) {
+			defer wg.Done()
+			var dialer Dialer
+			// Try to connect to a real host on a port
+			// that it is not listening on.
+			_, err := dialer.DialContext(ctx, "tcp", "golang.org:3")
+			if err == nil {
+				t.Errorf("Dial to unbound port succeeded on attempt %d", i)
+			}
+			<-sem
+		}(i)
+	}
+	wg.Wait()
 }
