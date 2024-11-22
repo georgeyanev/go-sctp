@@ -65,7 +65,7 @@ type Dialer struct {
 // Known networks are "sctp", "sctp4" (IPv4-only), "sctp6" (IPv6-only),
 //
 // The address has the form "host:port" for single-homing or
-// host1/host2/host3:port (the number of hosts/IPs are not limited)
+// host1/host2/host3:port for multi-homing (the number of hosts/IPs are not limited)
 // The host must be a literal IP address, or a host name that can be
 // resolved to IP addresses (which is not recommended,
 // because at most one of the host's IP addresses will be used).

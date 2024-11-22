@@ -81,7 +81,7 @@ func (fd *sctpFD) listen(sysfd int, laddr *SCTPAddr, backlog int, lc *ListenConf
 	}
 
 	// bind
-	if err = sysBindx(sysfd, fd.family, SCTP_SOCKOPT_BINDX_ADD, laddr); err != nil {
+	if err = sysBindx(sysfd, fd.family, _SCTP_SOCKOPT_BINDX_ADD, laddr); err != nil {
 		return err
 	}
 
@@ -177,7 +177,7 @@ func (fd *sctpFD) dial(ctx context.Context, s int, laddr *SCTPAddr, raddr *SCTPA
 			return err
 		}
 		// bind
-		if err := sysBindx(s, fd.family, SCTP_SOCKOPT_BINDX_ADD, laddr); err != nil {
+		if err := sysBindx(s, fd.family, _SCTP_SOCKOPT_BINDX_ADD, laddr); err != nil {
 			return err
 		}
 	}
@@ -247,6 +247,10 @@ func (fd *sctpFD) retrieveRemoteAddr() (*SCTPAddr, error) {
 }
 
 func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
+	if !fd.initialized() {
+		return nil, errEINVAL
+	}
+
 	// SCTP_ADDRS_BUF_SIZE is the allocated buffer for system calls returning local/remote sctp multi-homed addresses
 	const SCTP_ADDRS_BUF_SIZE int = 4096 //enough for most cases
 
@@ -262,7 +266,7 @@ func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
 	var err error
 	rawParamBuf := unsafe.Slice((*byte)(unsafe.Pointer(&rawParam)), unsafe.Sizeof(rawParam))
 	doErr := fd.rc.Control(func(fd uintptr) {
-		err = getsockoptBytes(int(fd), SOL_SCTP, optName, rawParamBuf)
+		err = getsockoptBytes(int(fd), unix.IPPROTO_SCTP, optName, rawParamBuf)
 	})
 	if doErr != nil {
 		return nil, doErr
