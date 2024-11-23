@@ -127,6 +127,27 @@ func (c *SCTPConn) GetDisableFragments() (bool, error) {
 	return b, nil
 }
 
+func (c *SCTPConn) SetSendBuffer(bufSize int) error {
+	if !c.ok() {
+		return errEINVAL
+	}
+	if err := c.fd.setSendBuffer(bufSize); err != nil {
+		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return nil
+}
+
+func (c *SCTPConn) GetSendBuffer() (int, error) {
+	if !c.ok() {
+		return 0, errEINVAL
+	}
+	sbSize, err := c.fd.getSendBuffer()
+	if err != nil {
+		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return sbSize, nil
+}
+
 func newSCTPConnNew(fd *sctpFD) *SCTPConn {
 	_ = fd.setNoDelay(true)
 
