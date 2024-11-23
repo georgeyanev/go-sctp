@@ -550,9 +550,8 @@ func TestSCTPStress(t *testing.T) {
 
 // Test that >32-bit reads work on 64-bit systems.
 // On 32-bit systems this tests that maxint reads work.
-// TODO: Revisit
 func TestSCTPBig(t *testing.T) {
-	t.Skip("For some reason this is too slow using conn.Write(). We should revisit this test.")
+	t.Skip("For this to pass fast a larger socket buffers are required (i.e. 4MB) and larger single message size.")
 	for _, writev := range []bool{false} {
 		t.Run(fmt.Sprintf("writev=%v", writev), func(t *testing.T) {
 			ln := newLocalListenerSCTP(t, "sctp")
