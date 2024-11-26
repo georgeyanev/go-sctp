@@ -2,6 +2,7 @@ package sctp
 
 import (
 	"errors"
+	"io"
 	"net"
 )
 
@@ -65,11 +66,29 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 	return nil
 }
 
-func (c *SCTPConn) ReadMsg(b []byte) (int, bool, error) { return 0, true, nil }
+func (c *SCTPConn) ReadMsg(b []byte) (int, *RcvInfo, error) {
+	if !c.ok() {
+		return 0, nil, errEINVAL
+	}
+	n, _, err := c.fd.readMsg(b, 0)
+	if err != nil && err != io.EOF {
+		err = &net.OpError{Op: "readMsg", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return n, nil, err
+}
 
 //func (c *Conn) WriteMsgEor(b []byte, eor bool) (int, error) { return 0, nil }
 
-func (c *SCTPConn) WriteMsg(b []byte) (int, error) { return 0, nil }
+func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
+	if !c.ok() {
+		return 0, errEINVAL
+	}
+	n, err := c.fd.writeMsg(b, info, nil, 0)
+	if err != nil {
+		err = &net.OpError{Op: "writeMsg", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return n, err
+}
 
 // SetNoDelay turns on/off any Nagle-like algorithm. This means that
 // packets are generally sent as soon as possible, and no unnecessary
@@ -127,21 +146,42 @@ func (c *SCTPConn) GetDisableFragments() (bool, error) {
 	return b, nil
 }
 
-func (c *SCTPConn) SetSendBuffer(bufSize int) error {
+func (c *SCTPConn) SetWriteBuffer(bufSize int) error {
 	if !c.ok() {
 		return errEINVAL
 	}
-	if err := c.fd.setSendBuffer(bufSize); err != nil {
+	if err := c.fd.setWriteBuffer(bufSize); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
 	return nil
 }
 
-func (c *SCTPConn) GetSendBuffer() (int, error) {
+func (c *SCTPConn) GetWriteBuffer() (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL
 	}
-	sbSize, err := c.fd.getSendBuffer()
+	sbSize, err := c.fd.getWriteBuffer()
+	if err != nil {
+		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return sbSize, nil
+}
+
+func (c *SCTPConn) SetReadBuffer(bufSize int) error {
+	if !c.ok() {
+		return errEINVAL
+	}
+	if err := c.fd.setReadBuffer(bufSize); err != nil {
+		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return nil
+}
+
+func (c *SCTPConn) GetReadBuffer() (int, error) {
+	if !c.ok() {
+		return 0, errEINVAL
+	}
+	sbSize, err := c.fd.getReadBuffer()
 	if err != nil {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}

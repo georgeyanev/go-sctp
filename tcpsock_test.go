@@ -61,7 +61,7 @@ func TestTCPBig(t *testing.T) {
 }
 
 func writeAllTCP(c net.Conn, p []byte) (int, error) {
-	//wBufSize, err := c.fd.getSendBuffer()
+	//wBufSize, err := c.fd.getWriteBuffer()
 	wBufSize := 8192
 	var nn int
 	for {

@@ -20,16 +20,18 @@ func main() {
 	}
 	defer c.Close()
 
-	//x := int(1 << 30)
-	//x = x*5 + 1<<20 // just over 5 GB on 64-bit, just over 1GB on 32-bit
-	x := 1024 * 1024 * 1024 // 1G
+	x := 1024 * 1024 * 1024 * 5 // 5G
 	p := make([]byte, x)
 
-	sbSize, err := c.(*sctp.SCTPConn).GetSendBuffer()
+	wBuf, err := c.(*sctp.SCTPConn).GetWriteBuffer()
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Send buffer size: %d", sbSize)
+	rBuf, err := c.(*sctp.SCTPConn).GetReadBuffer()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Read/Write buffer sizes: %d/%d", rBuf, wBuf)
 
 	start := time.Now()
 	_, err = writeAll(c, p)
@@ -47,7 +49,6 @@ func main() {
 // See: https://datatracker.ietf.org/doc/html/rfc6458#page-67
 
 func writeAll(c net.Conn, p []byte) (int, error) {
-	//wBufSize, err := c.fd.getSendBuffer()
 	wBufSize := 1024
 
 	var nn, lastReported int
@@ -57,7 +58,9 @@ func writeAll(c net.Conn, p []byte) (int, error) {
 			maxL = nn + wBufSize
 		}
 
-		n, err := c.Write(p[nn:maxL])
+		//n, err := c.Write(p[nn:maxL])
+		//sndInfo := sctp.SndInfo{Sid: 1}
+		n, err := c.(*sctp.SCTPConn).WriteMsg(p[nn:maxL], nil)
 		if n > 0 {
 			nn += n
 		}
@@ -67,7 +70,7 @@ func writeAll(c net.Conn, p []byte) (int, error) {
 		if err != nil {
 			return nn, err
 		}
-		if (nn - lastReported) >= 1024*1024*10 { //10MB
+		if (nn - lastReported) >= 1024*1024*100 { //10MB
 			log.Printf("%d bytes written", nn)
 			lastReported = nn
 		}

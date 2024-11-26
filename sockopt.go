@@ -18,20 +18,6 @@ const (
 	_SCTP_SOCKOPT_BINDX_REM = 101
 )
 
-// InitMsg structure provides information for initializing new SCTP associations
-type InitMsg struct {
-	// number of streams to which the application wishes to be able to send, 10 by default
-	NumOstreams uint16
-	// maximum number of inbound streams the application is prepared to support, 10 by default
-	MaxInstreams uint16
-	// how many attempts the SCTP endpoint should make at resending the INIT
-	// if not specified the kernel parameter net.sctp.max_init_retransmits is used as default
-	MaxAttempts uint16
-	// largest timeout or retransmission timeout (RTO) value (in milliseconds) to use in attempting an INIT
-	// if not specified the kernel parameter net.sctp.rto_max is used as default
-	MaxInitTimeout uint16
-}
-
 type assocValue struct {
 	// association id, ignored for one-to-one style sockets
 	assocId int32
@@ -48,18 +34,17 @@ func setDefaultSockopts(s, family int, ipv6only bool) error {
 		// is otherwise. Note that some operating systems
 		// never admit this option.
 		_ = syscall.SetsockoptInt(s, syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, boolint(ipv6only))
-
-		//// set PMTU discovery option
-		//err := syscall.SetsockoptInt(s, syscall.IP_PROTO_IP, syscall.IPV6_MTU_DISCOVER, syscall.IP_PMTUDISC_DO)
-		//if err != nil {
-		//	return os.NewSyscallError("setsockopt", err)
-		//}
-	} else {
-		//// set PMTU discovery option
-		//err := syscall.SetsockoptInt(s, syscall.IP_PROTO_IP, syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DO)
-		//if err != nil {
-		//	return os.NewSyscallError("setsockopt", err)
-		//}
+	}
+	if err := unix.SetsockoptInt(s, unix.SOL_SOCKET, unix.SO_SNDBUFFORCE, 1024*512); err != nil {
+		return err
+	}
+	if err := unix.SetsockoptInt(s, unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, 1024*512); err != nil {
+		return err
+	}
+	// set option to receive RcvInfo
+	const SCTP_RECVRCVINFO = 32
+	if err := unix.SetsockoptInt(s, unix.IPPROTO_SCTP, SCTP_RECVRCVINFO, 1); err != nil {
+		return err
 	}
 	return nil
 }
@@ -194,7 +179,7 @@ func (fd *sctpFD) setMaxseg(maxSeg uint32) error {
 	return nil
 }
 
-func (fd *sctpFD) setSendBuffer(sndBuf int) error {
+func (fd *sctpFD) setWriteBuffer(sndBuf int) error {
 	if !fd.initialized() {
 		return errEINVAL
 	}
@@ -211,7 +196,7 @@ func (fd *sctpFD) setSendBuffer(sndBuf int) error {
 	return nil
 }
 
-func (fd *sctpFD) getSendBuffer() (int, error) {
+func (fd *sctpFD) getWriteBuffer() (int, error) {
 	if !fd.initialized() {
 		return 0, errEINVAL
 	}
@@ -219,6 +204,41 @@ func (fd *sctpFD) getSendBuffer() (int, error) {
 	var sndBuf int
 	doErr := fd.rc.Control(func(fd uintptr) {
 		sndBuf, err = unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF)
+	})
+	if doErr != nil {
+		return 0, doErr
+	}
+	if err != nil {
+		return 0, os.NewSyscallError("getsockopt", err)
+	}
+	return sndBuf, nil
+}
+
+func (fd *sctpFD) setReadBuffer(rcvBuf int) error {
+	if !fd.initialized() {
+		return errEINVAL
+	}
+	var err error
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, rcvBuf)
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
+	return nil
+}
+
+func (fd *sctpFD) getReadBuffer() (int, error) {
+	if !fd.initialized() {
+		return 0, errEINVAL
+	}
+	var err error
+	var sndBuf int
+	doErr := fd.rc.Control(func(fd uintptr) {
+		sndBuf, err = unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF)
 	})
 	if doErr != nil {
 		return 0, doErr

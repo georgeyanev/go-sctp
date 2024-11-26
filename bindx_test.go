@@ -100,17 +100,17 @@ func TestTemp(t *testing.T) {
 				log.Fatal(err)
 			}
 
-			sndBuf, err := c.(*SCTPConn).fd.getSendBuffer()
+			sndBuf, err := c.(*SCTPConn).fd.getWriteBuffer()
 			if err != nil {
 				log.Fatal(err)
 			}
 			log.Printf("Initial sendBuffer size: %v", sndBuf)
 
-			err = c.(*SCTPConn).fd.setSendBuffer(1024 * 1024 * 10) // 10MB
+			err = c.(*SCTPConn).fd.setWriteBuffer(1024 * 1024 * 10) // 10MB
 			if err != nil {
 				log.Fatal(err)
 			}
-			sndBuf, err = c.(*SCTPConn).fd.getSendBuffer()
+			sndBuf, err = c.(*SCTPConn).fd.getWriteBuffer()
 			if err != nil {
 				log.Fatal(err)
 			}

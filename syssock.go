@@ -104,3 +104,21 @@ func sysConnect(fd, family int, raddr *SCTPAddr) error {
 	}
 	return nil
 }
+
+// used in calling ControlFn functions with Listen and Dial
+type rawConnDummy struct {
+	fd int
+}
+
+func (r rawConnDummy) Control(f func(uintptr)) error {
+	f(uintptr(r.fd))
+	return nil
+}
+
+func (r rawConnDummy) Read(_ func(uintptr) bool) error {
+	panic("not implemented")
+}
+
+func (r rawConnDummy) Write(_ func(uintptr) bool) error {
+	panic("not implemented")
+}

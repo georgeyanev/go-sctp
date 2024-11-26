@@ -4,11 +4,18 @@ import (
 	"context"
 	"errors"
 	"golang.org/x/sys/unix"
+	"io"
 	"log"
+	"net"
 	"os"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
+)
+
+const (
+	_SCTP_CMSG_SNDINFO = 2
+	_SCTP_CMSG_RCVINFO = 3
 )
 
 type sctpFD struct {
@@ -22,23 +29,6 @@ type sctpFD struct {
 	// immutable until Close
 	family int
 	net    string
-}
-
-type rawConnDummy struct {
-	fd int
-}
-
-func (r rawConnDummy) Control(f func(uintptr)) error {
-	f(uintptr(r.fd))
-	return nil
-}
-
-func (r rawConnDummy) Read(_ func(uintptr) bool) error {
-	panic("not implemented")
-}
-
-func (r rawConnDummy) Write(_ func(uintptr) bool) error {
-	panic("not implemented")
 }
 
 // binds the specified addresses or, if the SCTP extension described
@@ -148,6 +138,11 @@ func (fd *sctpFD) accept() (*sctpFD, error) {
 		return nil, err
 	}
 
+	if _, err = syscall.Getpeername(ns); err != nil {
+		log.Printf("Getpeername from ACCEPT returned error: %v", err)
+	} else {
+		log.Printf("Getpeername from ACCEPT returned OK")
+	}
 	// set addresses
 	newSctpFD.refreshLocalAddr()
 	newSctpFD.refreshRemoteAddr()
@@ -189,6 +184,115 @@ func (fd *sctpFD) dial(ctx context.Context, s int, laddr *SCTPAddr, raddr *SCTPA
 	fd.refreshLocalAddr()
 	fd.refreshRemoteAddr()
 	return nil
+}
+
+func (fd *sctpFD) writeMsg(b []byte, info *SndInfo, to *net.IPAddr, flags int) (int, error) {
+	if !fd.initialized() || (to != nil && fd.raddr.Load() == nil) {
+		return 0, errEINVAL
+	}
+	var err error
+	var sa syscall.Sockaddr
+	if to != nil {
+		sa, err = ipToSockaddr(fd.family, to.IP, fd.raddr.Load().Port, to.Zone)
+		if err != nil {
+			return 0, err
+		}
+		if info != nil {
+			info.Flags |= SCTP_ADDR_OVER
+		} else {
+			info = &SndInfo{Flags: SCTP_ADDR_OVER}
+		}
+	}
+	var oob []byte
+	if info != nil {
+		cmsghdr := &unix.Cmsghdr{
+			Level: unix.IPPROTO_SCTP,
+			Type:  _SCTP_CMSG_SNDINFO,
+		}
+		cmsghdr.SetLen(unix.CmsgSpace(int(unsafe.Sizeof(*info))))
+
+		cmsghdrBuf := unsafe.Slice((*byte)(unsafe.Pointer(cmsghdr)), unsafe.Sizeof(*cmsghdr))
+		infoBuf := unsafe.Slice((*byte)(unsafe.Pointer(info)), unsafe.Sizeof(*info))
+		oob = append(cmsghdrBuf, infoBuf...)
+	}
+
+	var n int
+	doErr := fd.rc.Write(func(fd uintptr) (done bool) {
+		for {
+			n, err = syscall.SendmsgN(int(fd), b, oob, sa, flags)
+			if err == nil {
+				return true // err not set
+			}
+			switch err {
+			case unix.EINTR:
+				continue // ignoring EINTR
+			case unix.EAGAIN:
+				return false // causing waitWrite
+			}
+			return true // err is set
+		}
+	})
+	if doErr != nil {
+		return 0, doErr
+	}
+	if err != nil {
+		return 0, os.NewSyscallError("sendmsg", err)
+	}
+	return n, nil
+}
+
+func (fd *sctpFD) readMsg(b []byte, flags int) (int, *RcvInfo, error) {
+	if !fd.initialized() {
+		return 0, nil, errEINVAL
+	}
+	var err error
+	var n, oobn, recvflags int
+	var oob = make([]byte, 256)
+	doErr := fd.rc.Read(func(fd uintptr) bool {
+		for {
+			n, oobn, recvflags, _, err = syscall.Recvmsg(int(fd), b, oob, flags)
+			if err == nil {
+				if recvflags&SCTP_NOTIFICATION > 0 {
+					log.Printf("This is a notification")
+					continue
+				}
+				return true // err not set
+			}
+			switch err {
+			case unix.EINTR:
+				continue // ignoring EINTR
+			case unix.EAGAIN:
+				return false // causing waitRead
+			}
+			return true // err is set
+		}
+	})
+	if doErr != nil {
+		return 0, nil, doErr
+	}
+	if err != nil {
+		return 0, nil, os.NewSyscallError("recvmsg", err)
+	}
+	if n == 0 && oobn == 0 {
+		return 0, nil, io.EOF
+	}
+
+	var rcvInfo *RcvInfo
+	if oobn > 0 {
+		msgs, err := unix.ParseSocketControlMessage(oob[:oobn])
+		if err != nil {
+			return 0, nil, err
+		}
+		for _, m := range msgs {
+			if m.Header.Level == unix.IPPROTO_SCTP {
+				switch m.Header.Type {
+				case _SCTP_CMSG_RCVINFO:
+					rcvInfo = (*RcvInfo)(unsafe.Pointer(&m.Data[0]))
+				}
+			}
+		}
+	}
+	return n, rcvInfo, nil
 }
 
 func (fd *sctpFD) refreshLocalAddr() {
