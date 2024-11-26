@@ -608,7 +608,7 @@ func writeAll(c *SCTPConn, p []byte) (int, error) {
 		return 0, errEINVAL
 	}
 
-	//wBufSize, err := c.fd.getSendBuffer()
+	//wBufSize, err := c.fd.getWriteBuffer()
 	wBufSize := 1024
 
 	var nn, lastReported int

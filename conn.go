@@ -25,7 +25,10 @@ type conn struct {
 // complete SCTP message, the Read call acts like a stream socket and
 // returns as much data as will fit in the buffer.
 //
-// If you want specific SCTP features, use the ReadMsg() function.
+// Read cannot distinguish message boundaries (i.e., there is no way
+// to observe the MSG_EOR flag to detect partial delivery)
+//
+// If you want specific SCTP features, use the ReadMsg() functions.
 func (c *conn) Read(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL
