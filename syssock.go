@@ -36,12 +36,11 @@ func serverSocket(network string, laddr *SCTPAddr, lc *ListenConfig) (fd *sctpFD
 
 // serverSocket returns a listening sctpFD object that is ready for
 // asynchronous I/O using the network poller
-func clientSocket(ctx context.Context, network string, laddr, raddr *SCTPAddr, initMsg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) (fd *sctpFD, err error) {
+func clientSocket(ctx context.Context, network string, raddr *SCTPAddr, d *Dialer) (fd *sctpFD, err error) {
 
 	log.Printf("gId: %d, func clientSocket", getGoroutineID())
 
-	family, ipv6only := favoriteAddrFamily(network, laddr, raddr, "dial")
+	family, ipv6only := favoriteAddrFamily(network, d.LocalAddr, raddr, "dial")
 	s, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
 	if err != nil {
 		return nil, err
@@ -53,7 +52,7 @@ func clientSocket(ctx context.Context, network string, laddr, raddr *SCTPAddr, i
 	}
 
 	fd = newFD(family, network)
-	if err = fd.dial(ctx, s, laddr, raddr, initMsg, ctrlCtxFn); err != nil {
+	if err = fd.dial(ctx, s, raddr, d); err != nil {
 		_ = unix.Close(s)
 		return nil, err
 	}
