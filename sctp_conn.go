@@ -12,7 +12,12 @@ type SCTPConn struct {
 
 // BindAdd associates additional addresses with an already bound endpoint (i.e. socket).
 // If the endpoint supports dynamic address reconfiguration, BindAdd may cause an
-// endpoint to send the appropriate message to its peers to change the peers' address lists.
+// endpoint to send the appropriate message to its peer to change the peer's address lists.
+//
+// Port number should be absent from the address string.
+//
+// The outcome of BindAdd and BindRemove is affected by `net.sctp.addip_enable` and
+// `net.sctp.addip_noauth_enable` kernel parameters.
 func (c *SCTPConn) BindAdd(address string) error {
 	if !c.ok() {
 		return errEINVAL
@@ -22,6 +27,7 @@ func (c *SCTPConn) BindAdd(address string) error {
 		return &net.OpError{Op: "bindx", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(),
 			Err: errors.New("add address: " + address + ": " + err.Error())}
 	}
+	laddr.Port = c.LocalAddr().(*SCTPAddr).Port
 	if err = c.BindAddSCTP(laddr); err != nil {
 		return err
 	}
@@ -40,6 +46,13 @@ func (c *SCTPConn) BindAddSCTP(laddr *SCTPAddr) error {
 }
 
 // BindRemove remove some addresses with which a bound socket is associated.
+// If the endpoint supports dynamic address reconfiguration, BindRemove may cause an
+// endpoint to send the appropriate message to its peer to change the peer's address lists.
+//
+// Port number should be absent from the address string.
+//
+// The outcome of BindAdd and BindRemove is affected by `net.sctp.addip_enable` and
+// `net.sctp.addip_noauth_enable` kernel parameters.
 func (c *SCTPConn) BindRemove(address string) error {
 	if !c.ok() {
 		return errEINVAL
@@ -49,6 +62,7 @@ func (c *SCTPConn) BindRemove(address string) error {
 		return &net.OpError{Op: "bindx", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(),
 			Err: errors.New("remove address: " + address + ": " + err.Error())}
 	}
+	laddr.Port = c.LocalAddr().(*SCTPAddr).Port
 	if err = c.BindRemoveSCTP(laddr); err != nil {
 		return err
 	}
@@ -66,15 +80,37 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 	return nil
 }
 
-func (c *SCTPConn) ReadMsg(b []byte) (int, *RcvInfo, error) {
+// ReadMsg reads a message from socket and stores it into 'b'.
+// If there is no room for the message in b, ReadMsg fills b with part
+// of the message and clears SCTP_EOR flag in recvFlags. The rest of the message
+// should be retrieved using subsequent calls to ReadMsg the last one having
+// SCTP_EOR set.
+// The message stored in 'b' can be a regular message or a notification(event) message.
+// Notifications will be returned only if and after Subscribe is called.
+// If the message is a notification, the SCTP_NOTIFICATION flag will be set in recvFlags.
+// A ReadMsg() call will return only one notification at a time.  Just
+// as when reading normal data, it may return part of a notification if
+// the buffer passed is not large enough.  If a single read is not
+// sufficient, recvFlags will have SCTP_EOR clear. The user must finish
+// reading the notification before subsequent data can arrive.
+// The notification message can later be parsed with ParseEvent function given
+// that the argument passed to it is a whole message (not part of it).
+//
+// ReadMsg returns:
+//
+//	n: number of bytes read and stored into b
+//	rcvInfo: information about the received message
+//	recvFlags: received message flags (i.e. SCTP_NOTIFICATION, SCTP_EOR)
+//	err : error
+func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
 	if !c.ok() {
-		return 0, nil, errEINVAL
+		return 0, nil, 0, errEINVAL
 	}
-	n, _, err := c.fd.readMsg(b, 0)
+	n, rcvInfo, rcvFlags, err := c.fd.readMsg(b)
 	if err != nil && err != io.EOF {
 		err = &net.OpError{Op: "readMsg", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
-	return n, nil, err
+	return n, rcvInfo, rcvFlags, err
 }
 
 //func (c *Conn) WriteMsgEor(b []byte, eor bool) (int, error) { return 0, nil }
@@ -88,6 +124,43 @@ func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
 		err = &net.OpError{Op: "writeMsg", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
 	return n, err
+}
+
+// Subscribe to one or more of the SCTP event types.
+// By default, we do not subscribe to any events.
+// Once Subscribe is called, the events are received with
+// ReadMsg having SCTP_NOTIFICATION flag set in recvFlags.
+func (c *SCTPConn) Subscribe(event ...EventType) error {
+	if !c.ok() {
+		return errEINVAL
+	}
+	for _, e := range event {
+		if err := c.fd.subscribe(e, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Unsubscribe from one or more of the SCTP event types we have previously subscribed.
+func (c *SCTPConn) Unsubscribe(event ...EventType) error {
+	if !c.ok() {
+		return errEINVAL
+	}
+	for _, e := range event {
+		if err := c.fd.subscribe(e, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *SCTPConn) RefreshRemoteAddr() (*SCTPAddr, error) {
+	if !c.ok() {
+		return nil, errEINVAL
+	}
+	c.fd.refreshRemoteAddr()
+	return c.fd.raddr.Load(), nil
 }
 
 // SetNoDelay turns on/off any Nagle-like algorithm. This means that
@@ -146,16 +219,6 @@ func (c *SCTPConn) GetDisableFragments() (bool, error) {
 	return b, nil
 }
 
-func (c *SCTPConn) SetWriteBuffer(bufSize int) error {
-	if !c.ok() {
-		return errEINVAL
-	}
-	if err := c.fd.setWriteBuffer(bufSize); err != nil {
-		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
-	}
-	return nil
-}
-
 func (c *SCTPConn) GetWriteBuffer() (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL
@@ -165,16 +228,6 @@ func (c *SCTPConn) GetWriteBuffer() (int, error) {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
 	return sbSize, nil
-}
-
-func (c *SCTPConn) SetReadBuffer(bufSize int) error {
-	if !c.ok() {
-		return errEINVAL
-	}
-	if err := c.fd.setReadBuffer(bufSize); err != nil {
-		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
-	}
-	return nil
 }
 
 func (c *SCTPConn) GetReadBuffer() (int, error) {

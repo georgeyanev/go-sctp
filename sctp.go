@@ -23,6 +23,10 @@ const (
 	SCTP_NOTIFICATION     = 0x8000
 )
 
+const (
+	SCTP_EOR = unix.MSG_EOR
+)
+
 // InitOptions structure provides information for initializing new SCTP associations
 type InitOptions struct {
 	// number of streams to which the application wishes to be able to send, 10 by default

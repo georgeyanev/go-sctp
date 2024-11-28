@@ -2,7 +2,6 @@ package sctp
 
 import (
 	"golang.org/x/sys/unix"
-	"log"
 	"os"
 	"runtime"
 	"unsafe"
@@ -11,17 +10,9 @@ import (
 const (
 	_SCTP_NODELAY           = 3
 	_SCTP_DISABLE_FRAGMENTS = 8
-	_SCTP_MAXSEG            = 13
 	_SCTP_SOCKOPT_BINDX_ADD = 100
 	_SCTP_SOCKOPT_BINDX_REM = 101
 )
-
-type assocValue struct {
-	// association id, ignored for one-to-one style sockets
-	assocId int32
-	// association parameter value (can be SCTP_MAXSEG, SCTP_MAX_BURST, SCTP_CONTEXT)
-	assocValue uint32
-}
 
 func setInitOptions(fd int, initOptions InitOptions) error {
 	const SCTP_INITMSG = 2
@@ -161,69 +152,6 @@ func (fd *sctpFD) setDisableFragments(b bool) error {
 	return nil
 }
 
-func (fd *sctpFD) getMaxseg() (uint32, error) {
-	if !fd.initialized() {
-		return 0, errEINVAL
-	}
-
-	rawParam := assocValue{} // to be filled by the getsockopt call
-
-	var err error
-	rawParamBuf := unsafe.Slice((*byte)(unsafe.Pointer(&rawParam)), unsafe.Sizeof(rawParam))
-	doErr := fd.rc.Control(func(fd uintptr) {
-		err = getsockoptBytes(int(fd), unix.IPPROTO_SCTP, _SCTP_MAXSEG, rawParamBuf)
-	})
-	if doErr != nil {
-		return 0, doErr
-	}
-	if err != nil {
-		log.Printf("gId: %d, getsockopt error: %v, optName: %v, rawParamBuf: %v ", getGoroutineID(), err, _SCTP_MAXSEG, rawParamBuf)
-		//debug.PrintStack()
-		return 0, os.NewSyscallError("getsockopt", err)
-	}
-	return rawParam.assocValue, nil
-}
-
-func (fd *sctpFD) setMaxseg(maxSeg uint32) error {
-	if !fd.initialized() {
-		return errEINVAL
-	}
-
-	rawParam := assocValue{assocId: 0, assocValue: maxSeg} // to be read by the getsockopt call
-
-	var err error
-	rawParamBuf := unsafe.Slice((*byte)(unsafe.Pointer(&rawParam)), unsafe.Sizeof(rawParam))
-	doErr := fd.rc.Control(func(fd uintptr) {
-		err = unix.SetsockoptString(int(fd), unix.IPPROTO_SCTP, _SCTP_MAXSEG, string(rawParamBuf))
-	})
-	if doErr != nil {
-		return doErr
-	}
-	if err != nil {
-		log.Printf("gId: %d, sesockopt error: %v, optName: %v, rawParamBuf: %v ", getGoroutineID(), err, _SCTP_MAXSEG, rawParamBuf)
-		//debug.PrintStack()
-		return os.NewSyscallError("setsockopt", err)
-	}
-	return nil
-}
-
-func (fd *sctpFD) setWriteBuffer(sndBuf int) error {
-	if !fd.initialized() {
-		return errEINVAL
-	}
-	var err error
-	doErr := fd.rc.Control(func(fd uintptr) {
-		err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, sndBuf)
-	})
-	if doErr != nil {
-		return doErr
-	}
-	if err != nil {
-		return os.NewSyscallError("setsockopt", err)
-	}
-	return nil
-}
-
 func (fd *sctpFD) getWriteBuffer() (int, error) {
 	if !fd.initialized() {
 		return 0, errEINVAL
@@ -240,23 +168,6 @@ func (fd *sctpFD) getWriteBuffer() (int, error) {
 		return 0, os.NewSyscallError("getsockopt", err)
 	}
 	return sndBuf, nil
-}
-
-func (fd *sctpFD) setReadBuffer(rcvBuf int) error {
-	if !fd.initialized() {
-		return errEINVAL
-	}
-	var err error
-	doErr := fd.rc.Control(func(fd uintptr) {
-		err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, rcvBuf)
-	})
-	if doErr != nil {
-		return doErr
-	}
-	if err != nil {
-		return os.NewSyscallError("setsockopt", err)
-	}
-	return nil
 }
 
 func (fd *sctpFD) getReadBuffer() (int, error) {

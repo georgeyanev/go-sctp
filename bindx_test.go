@@ -71,17 +71,17 @@ func TestTemp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	maxSeg, err := ln1.(*SCTPListener).fd.getMaxseg()
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	/*	maxSeg, err := ln1.(*SCTPListener).fd.getMaxseg()
+		if err != nil {
+			log.Fatal(err)
+		}
+	*/
 	disableFragments, err := ln1.(*SCTPListener).fd.getDisableFragments()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("Maxseg on listener: %v", maxSeg)
+	//log.Printf("Maxseg on listener: %v", maxSeg)
 	log.Printf("DisableFragments on listener: %v", disableFragments)
 
 	closeChan := make(chan struct{})
@@ -91,10 +91,10 @@ func TestTemp(t *testing.T) {
 			if err != nil {
 				log.Fatal(err)
 			}
-			maxSeg2, err := c.(*SCTPConn).fd.getMaxseg()
-			if err != nil {
-				log.Fatal(err)
-			}
+			//maxSeg2, err := c.(*SCTPConn).fd.getMaxseg()
+			//if err != nil {
+			//	log.Fatal(err)
+			//}
 			disableFragments2, err := c.(*SCTPConn).fd.getDisableFragments()
 			if err != nil {
 				log.Fatal(err)
@@ -106,17 +106,17 @@ func TestTemp(t *testing.T) {
 			}
 			log.Printf("Initial sendBuffer size: %v", sndBuf)
 
-			err = c.(*SCTPConn).fd.setWriteBuffer(1024 * 1024 * 10) // 10MB
-			if err != nil {
-				log.Fatal(err)
-			}
-			sndBuf, err = c.(*SCTPConn).fd.getWriteBuffer()
+			/*			err = c.(*SCTPConn).fd.setWriteBuffer(1024 * 1024 * 10) // 10MB
+						if err != nil {
+							log.Fatal(err)
+						}
+			*/sndBuf, err = c.(*SCTPConn).fd.getWriteBuffer()
 			if err != nil {
 				log.Fatal(err)
 			}
 			log.Printf("Final sendBuffer size: %v", sndBuf)
 
-			log.Printf("Maxseg on accepted connection: %v", maxSeg2)
+			//			log.Printf("Maxseg on accepted connection: %v", maxSeg2)
 			log.Printf("DisabledFragments on accepted connection: %v", disableFragments2)
 			c.Close()
 			close(closeChan)
@@ -126,16 +126,16 @@ func TestTemp(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	maxSeg3, err := c.(*SCTPConn).fd.getMaxseg()
-	if err != nil {
-		log.Fatal(err)
-	}
+	//maxSeg3, err := c.(*SCTPConn).fd.getMaxseg()
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
 	disableFragments3, err := c.(*SCTPConn).fd.getDisableFragments()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("Maxseg on dialed connection: %v", maxSeg3)
+	//	log.Printf("Maxseg on dialed connection: %v", maxSeg3)
 	log.Printf("DisabledFragments on dialed connection: %v", disableFragments3)
 
 	<-closeChan

@@ -146,10 +146,14 @@ func (ln *SCTPListener) SetDeadline(t time.Time) error {
 
 // BindAdd associates additional addresses with an already bound endpoint (i.e. socket).
 // If the endpoint supports dynamic address reconfiguration, BindAdd may cause an
-// endpoint to send the appropriate message to its peers to change the peers' address lists.
+// endpoint to send the appropriate message to its peer to change the peer's address lists.
 // New accepted associations will be associated with these
-// addresses in addition to the already present ones
-// Port number should be equal to the already bound port.
+// addresses in addition to the already present ones.
+//
+// Port number should be absent from the address string.
+//
+// The outcome of BindAdd and BindRemove is affected by `net.sctp.addip_enable` and
+// `net.sctp.addip_noauth_enable` kernel parameters.
 func (ln *SCTPListener) BindAdd(address string) error {
 	if !ln.ok() {
 		return errEINVAL
@@ -159,6 +163,7 @@ func (ln *SCTPListener) BindAdd(address string) error {
 		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
 			Err: errors.New("add address: " + address + ": " + err.Error())}
 	}
+	laddr.Port = ln.Addr().(*SCTPAddr).Port
 	if err = ln.BindAddSCTP(laddr); err != nil {
 		return err
 	}
@@ -177,8 +182,14 @@ func (ln *SCTPListener) BindAddSCTP(laddr *SCTPAddr) error {
 }
 
 // BindRemove remove some addresses with which a bound socket is associated.
-// New associations accepted will not be associated with these addresses
-// Port number should be equal to the already bound port.
+// If the endpoint supports dynamic address reconfiguration, BindRemove may cause an
+// endpoint to send the appropriate message to its peer to change the peer's address lists.
+// New associations accepted will not be associated with these addresses.
+//
+// Port number should be absent from the address string.
+//
+// The outcome of BindAdd and BindRemove is affected by `net.sctp.addip_enable` and
+// `net.sctp.addip_noauth_enable` kernel parameters.
 func (ln *SCTPListener) BindRemove(address string) error {
 	if !ln.ok() {
 		return errEINVAL
@@ -188,6 +199,7 @@ func (ln *SCTPListener) BindRemove(address string) error {
 		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
 			Err: errors.New("remove address: " + address + ": " + err.Error())}
 	}
+	laddr.Port = ln.Addr().(*SCTPAddr).Port
 	if err = ln.BindRemoveSCTP(laddr); err != nil {
 		return err
 	}
@@ -202,6 +214,36 @@ func (ln *SCTPListener) BindRemoveSCTP(laddr *SCTPAddr) error {
 	if err := ln.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_REM); err != nil {
 		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
 			Err: errors.New("remove address: " + laddr.String() + ": " + err.Error())}
+	}
+	return nil
+}
+
+// Subscribe to one or more of the SCTP event types.
+// By default, we do not subscribe to any events.
+// Once Subscribe is called, the events are received with
+// ReadMsg having SCTP_NOTIFICATION flag set in recvFlags.
+// The subscription is transferred to the new accepted connections.
+func (ln *SCTPListener) Subscribe(event ...EventType) error {
+	if !ln.ok() {
+		return errEINVAL
+	}
+	for _, e := range event {
+		if err := ln.fd.subscribe(e, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Unsubscribe from one or more of the SCTP event types we have previously subscribed.
+func (ln *SCTPListener) Unsubscribe(event ...EventType) error {
+	if !ln.ok() {
+		return errEINVAL
+	}
+	for _, e := range event {
+		if err := ln.fd.subscribe(e, false); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -59,8 +59,8 @@ func writeAll(c net.Conn, p []byte) (int, error) {
 		}
 
 		//n, err := c.Write(p[nn:maxL])
-		//sndInfo := sctp.SndInfo{Sid: 1}
-		n, err := c.(*sctp.SCTPConn).WriteMsg(p[nn:maxL], nil)
+		sndInfo := sctp.SndInfo{Sid: 1}
+		n, err := c.(*sctp.SCTPConn).WriteMsg(p[nn:maxL], &sndInfo)
 		if n > 0 {
 			nn += n
 		}

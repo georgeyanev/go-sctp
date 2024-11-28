@@ -147,7 +147,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 	return buf, nil
 }
 
-// ResolveSCTPAddr returns an address of a SCTP end point.
+// ResolveSCTPAddr returns an address of an SCTP end point.
 // The network must be a SCTP network name.
 // See func [Dial] for a description of the network and address parameters.
 func ResolveSCTPAddr(network, addr string) (*SCTPAddr, error) {
@@ -161,7 +161,7 @@ func resolveSCTPAddr(op, network, addr string, hint *SCTPAddr) (*SCTPAddr, error
 		return nil, net.UnknownNetworkError(network)
 	}
 	addr = strings.TrimSpace(addr)
-	if op == "dial" && addr == "" {
+	if (op == "dial" || op == "bindx") && addr == "" {
 		return nil, errors.New("missing address")
 	}
 	if addr == "" {
@@ -181,10 +181,23 @@ func resolveSCTPAddr(op, network, addr string, hint *SCTPAddr) (*SCTPAddr, error
 		}
 		ipAddrs = append(ipAddrs, *ipAddr)
 	}
-	// last address contains the port number so use TCP resolver
-	tcpAddr, err := net.ResolveTCPAddr(strings.ReplaceAll(network, "sctp", "tcp"), addrs[len(addrs)-1])
-	if err != nil {
-		return nil, err
+
+	// process last address
+	var tcpAddr *net.TCPAddr
+	var err error
+	if op == "bindx" { // address does not contain port number so use IP resolver
+		ipAddr, err := net.ResolveIPAddr(
+			strings.ReplaceAll(network, "sctp", "ip"),
+			strings.Trim(addrs[len(addrs)-1], "[]")) // omit [] boundaries from ipv6 addresses
+		if err != nil {
+			return nil, err
+		}
+		tcpAddr = &net.TCPAddr{IP: ipAddr.IP, Zone: ipAddr.Zone}
+	} else { // last address contains the port number so use TCP resolver
+		tcpAddr, err = net.ResolveTCPAddr(strings.ReplaceAll(network, "sctp", "tcp"), addrs[len(addrs)-1])
+		if err != nil {
+			return nil, err
+		}
 	}
 	if op == "dial" && tcpAddr.Port == 0 {
 		return nil, &net.AddrError{Err: "missing port in address", Addr: addr}
