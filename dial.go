@@ -52,7 +52,7 @@ type Dialer struct {
 	ControlContext func(ctx context.Context, network, address string, c syscall.RawConn) error
 
 	// provides information for initializing new SCTP associations
-	InitMsg InitMsg
+	InitOptions InitOptions
 
 	// SCTP heartbeats are enabled by default and the interval between them are defined
 	// in `net.sctp.hb_interval` kernel parameter which is 30 seconds by default.
@@ -176,21 +176,7 @@ func (d *Dialer) DialSCTPContext(ctx context.Context, network string, raddr *SCT
 
 func dialSCTP(ctx context.Context, network string, raddr *SCTPAddr, d *Dialer) (*SCTPConn, error) {
 	log.Printf("gId: %d, func dialSCTP", getGoroutineID())
-	ctrlCtxFn := d.ControlContext
-	if ctrlCtxFn == nil && d.Control != nil {
-		ctrlCtxFn = func(cxt context.Context, network, address string, c syscall.RawConn) error {
-			return d.Control(network, address, c)
-		}
-	}
-
-	if d.InitMsg.NumOstreams == 0 { // set default value
-		d.InitMsg.NumOstreams = 10
-	}
-	if d.InitMsg.MaxInstreams == 0 { // set default value
-		d.InitMsg.MaxInstreams = 10
-	}
-
-	fd, err := clientSocket(ctx, network, d.LocalAddr, raddr, &d.InitMsg, ctrlCtxFn)
+	fd, err := clientSocket(ctx, network, raddr, d)
 	if err != nil {
 		return nil, &net.OpError{Op: "dial", Net: network, Source: d.LocalAddr.opAddr(), Addr: raddr.opAddr(), Err: err}
 	}

@@ -5,12 +5,10 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"syscall"
 	"unsafe"
 )
 
 const (
-	_SCTP_INITMSG           = 2
 	_SCTP_NODELAY           = 3
 	_SCTP_DISABLE_FRAGMENTS = 8
 	_SCTP_MAXSEG            = 13
@@ -25,38 +23,68 @@ type assocValue struct {
 	assocValue uint32
 }
 
-// Changes: set default options for SCTP only
-// Note that SCTP is connection-oriented in nature, and it does not support broadcast or multicast
-// communications, as UDP does.
-func setDefaultSockopts(s, family int, ipv6only bool) error {
-	if family == syscall.AF_INET6 {
-		// Allow both IP versions even if the OS default
-		// is otherwise. Note that some operating systems
-		// never admit this option.
-		_ = syscall.SetsockoptInt(s, syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, boolint(ipv6only))
+func setInitOptions(fd int, initOptions InitOptions) error {
+	const SCTP_INITMSG = 2
+	type InitMsg struct {
+		NumOstreams    uint16
+		MaxInstreams   uint16
+		MaxAttempts    uint16
+		MaxInitTimeout uint16
 	}
-	if err := unix.SetsockoptInt(s, unix.SOL_SOCKET, unix.SO_SNDBUFFORCE, 1024*512); err != nil {
-		return err
+
+	// set default values
+	if initOptions.NumOstreams == 0 {
+		initOptions.NumOstreams = 10
 	}
-	if err := unix.SetsockoptInt(s, unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, 1024*512); err != nil {
-		return err
+	if initOptions.MaxInstreams == 0 {
+		initOptions.MaxInstreams = 10
 	}
+	if initOptions.SocketReadBufferSize == 0 {
+		initOptions.SocketReadBufferSize = 512 * 1024
+	}
+	if initOptions.SocketWriteBufferSize == 0 {
+		initOptions.SocketWriteBufferSize = 512 * 1024
+	}
+
+	initMsg := InitMsg{
+		NumOstreams:    initOptions.NumOstreams,
+		MaxInstreams:   initOptions.MaxInstreams,
+		MaxAttempts:    initOptions.MaxAttempts,
+		MaxInitTimeout: initOptions.MaxInitTimeout,
+	}
+
+	// initMsg
+	initMsgBuf := unsafe.Slice((*byte)(unsafe.Pointer(&initMsg)), unsafe.Sizeof(initMsg))
+	err := unix.SetsockoptString(fd, unix.IPPROTO_SCTP, SCTP_INITMSG, string(initMsgBuf))
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
+
+	// In some environments (like Docker Desktop linuxkit), we don't have access to certain kernel
+	// parameters, so first we try to set the buffers forcefully.
+	// read socket buffer
+	err = unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, initOptions.SocketReadBufferSize)
+	if err != nil {
+		if err = unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUF, initOptions.SocketReadBufferSize); err != nil {
+			return os.NewSyscallError("setsockopt", err)
+		}
+	}
+
+	// write socket buffer
+	err = unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_SNDBUFFORCE, initOptions.SocketWriteBufferSize)
+	if err != nil {
+		if err = unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_SNDBUF, initOptions.SocketWriteBufferSize); err != nil {
+			return os.NewSyscallError("setsockopt", err)
+		}
+	}
+
 	// set option to receive RcvInfo
 	const SCTP_RECVRCVINFO = 32
-	if err := unix.SetsockoptInt(s, unix.IPPROTO_SCTP, SCTP_RECVRCVINFO, 1); err != nil {
+	if err = unix.SetsockoptInt(fd, unix.IPPROTO_SCTP, SCTP_RECVRCVINFO, 1); err != nil {
 		return err
 	}
+
 	return nil
-}
-
-func setDefaultListenerSockopts(s int) error {
-	// Allow reuse of recently-used addresses.
-	return os.NewSyscallError("setsockopt", syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1))
-}
-
-func setInitOpts(fd int, initMsg *InitMsg) error {
-	initMsgBuf := unsafe.Slice((*byte)(unsafe.Pointer(initMsg)), unsafe.Sizeof(*initMsg))
-	return os.NewSyscallError("setsockopt", unix.SetsockoptString(int(fd), unix.IPPROTO_SCTP, _SCTP_INITMSG, string(initMsgBuf)))
 }
 
 func (fd *sctpFD) getNoDelay() (bool, error) {

@@ -25,7 +25,7 @@ type ListenConfig struct {
 	Control func(network, address string, c syscall.RawConn) error
 
 	// provides information for initializing new SCTP associations
-	InitMsg InitMsg
+	InitOptions InitOptions
 
 	// SCTP heartbeats are enabled by default and the interval between them are defined
 	// in `net.sctp.hb_interval` kernel parameter which is 30 seconds by default.
@@ -92,13 +92,6 @@ func (lc *ListenConfig) ListenSCTP(network string, laddr *SCTPAddr) (*SCTPListen
 }
 
 func listenSCTP(network string, laddr *SCTPAddr, lc *ListenConfig) (*SCTPListener, error) {
-	if lc.InitMsg.NumOstreams == 0 { // set default value
-		lc.InitMsg.NumOstreams = 10
-	}
-	if lc.InitMsg.MaxInstreams == 0 { // set default value
-		lc.InitMsg.MaxInstreams = 10
-	}
-
 	fd, err := serverSocket(network, laddr, lc)
 	if err != nil {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr.opAddr(), Err: err}
