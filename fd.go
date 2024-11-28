@@ -66,7 +66,7 @@ func (fd *sctpFD) listen(sysfd int, laddr *SCTPAddr, backlog int, lc *ListenConf
 	}
 
 	// set init options (SCTP initMSG)
-	if err = setInitOpts(sysfd, &lc.InitMsg); err != nil {
+	if err = setInitOptions(sysfd, lc.InitOptions); err != nil {
 		return err
 	}
 
@@ -150,34 +150,40 @@ func (fd *sctpFD) accept() (*sctpFD, error) {
 	return newSctpFD, nil
 }
 
-func (fd *sctpFD) dial(ctx context.Context, s int, laddr *SCTPAddr, raddr *SCTPAddr, initMsg *InitMsg,
-	ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) error {
+func (fd *sctpFD) dial(ctx context.Context, sysfd int, raddr *SCTPAddr, d *Dialer) error {
 	log.Printf("gId: %d, func fd.dial", getGoroutineID())
 
+	ctrlCtxFn := d.ControlContext
+	if ctrlCtxFn == nil && d.Control != nil {
+		ctrlCtxFn = func(cxt context.Context, network, address string, c syscall.RawConn) error {
+			return d.Control(network, address, c)
+		}
+	}
+
 	if ctrlCtxFn != nil {
-		c := rawConnDummy{fd: s}
-		if err := ctrlCtxFn(ctx, fd.ctrlNetwork(), laddr.String(), c); err != nil {
+		c := rawConnDummy{fd: sysfd}
+		if err := ctrlCtxFn(ctx, fd.ctrlNetwork(), d.LocalAddr.String(), c); err != nil {
 			return err
 		}
 	}
 
 	// set SCTP initialization options
-	if err := setInitOpts(s, initMsg); err != nil {
+	if err := setInitOptions(sysfd, d.InitOptions); err != nil {
 		return err
 	}
 
 	// if local address is not null set reuse address option and bind it
-	if laddr != nil {
-		if err := setDefaultListenerSockopts(s); err != nil {
+	if d.LocalAddr != nil {
+		if err := setDefaultListenerSockopts(sysfd); err != nil {
 			return err
 		}
 		// bind
-		if err := sysBindx(s, fd.family, _SCTP_SOCKOPT_BINDX_ADD, laddr); err != nil {
+		if err := sysBindx(sysfd, fd.family, _SCTP_SOCKOPT_BINDX_ADD, d.LocalAddr); err != nil {
 			return err
 		}
 	}
 
-	if err := fd.connect(ctx, s, raddr); err != nil {
+	if err := fd.connect(ctx, sysfd, raddr); err != nil {
 		return err
 	}
 
