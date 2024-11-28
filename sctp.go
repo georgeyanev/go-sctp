@@ -23,8 +23,8 @@ const (
 	SCTP_NOTIFICATION     = 0x8000
 )
 
-// InitMsg structure provides information for initializing new SCTP associations
-type InitMsg struct {
+// InitOptions structure provides information for initializing new SCTP associations
+type InitOptions struct {
 	// number of streams to which the application wishes to be able to send, 10 by default
 	NumOstreams uint16
 	// maximum number of inbound streams the application is prepared to support, 10 by default
@@ -35,6 +35,12 @@ type InitMsg struct {
 	// largest timeout or retransmission timeout (RTO) value (in milliseconds) to use in attempting an INIT
 	// if not specified the kernel parameter net.sctp.rto_max is used as default
 	MaxInitTimeout uint16
+
+	// Default values for read and write buffers is 512K (usually the linux kernel doubles this value)
+	// Note that buffer sizes are limited by the kernel parameters `net.core.rmem_max` and `net.core.wmem_max`
+	// unless we run as a privileged user
+	SocketReadBufferSize  int
+	SocketWriteBufferSize int
 }
 
 // SndInfo structure specifies SCTP options for sending SCTP messages
