@@ -196,6 +196,16 @@ func (fd *sctpFD) writeMsg(b []byte, info *SndInfo, to *net.IPAddr, flags int) (
 	if !fd.initialized() || (to != nil && fd.raddr.Load() == nil) {
 		return 0, errEINVAL
 	}
+	var actualInfo *SndInfo
+	if info != nil && info.Ppid > 0 {
+		actualInfo = &SndInfo{
+			Sid:     info.Sid,
+			Flags:   info.Flags,
+			Ppid:    Htonui32(info.Ppid), // convert to network byte order
+			Context: info.Context,
+			AssocID: info.AssocID,
+		}
+	}
 	var err error
 	var sa syscall.Sockaddr
 	if to != nil {
@@ -203,23 +213,27 @@ func (fd *sctpFD) writeMsg(b []byte, info *SndInfo, to *net.IPAddr, flags int) (
 		if err != nil {
 			return 0, err
 		}
-		if info != nil {
-			info.Flags |= SCTP_ADDR_OVER
+		if actualInfo != nil {
+			actualInfo.Flags |= SCTP_ADDR_OVER
 		} else {
-			info = &SndInfo{Flags: SCTP_ADDR_OVER}
+			actualInfo = &SndInfo{Flags: SCTP_ADDR_OVER}
 		}
 	}
+	if actualInfo == nil {
+		actualInfo = info
+	}
+
 	var oob []byte
-	if info != nil {
+	if actualInfo != nil {
 		cmsghdr := &unix.Cmsghdr{
 			Level: unix.IPPROTO_SCTP,
 			Type:  _SCTP_CMSG_SNDINFO,
 		}
-		cmsghdr.SetLen(unix.CmsgSpace(int(unsafe.Sizeof(*info))))
+		cmsghdr.SetLen(unix.CmsgSpace(int(unsafe.Sizeof(*actualInfo))))
 
 		cmsghdrBuf := unsafe.Slice((*byte)(unsafe.Pointer(cmsghdr)), unsafe.Sizeof(*cmsghdr))
-		infoBuf := unsafe.Slice((*byte)(unsafe.Pointer(info)), unsafe.Sizeof(*info))
-		oob = append(cmsghdrBuf, infoBuf...)
+		actualInfoBuf := unsafe.Slice((*byte)(unsafe.Pointer(actualInfo)), unsafe.Sizeof(*actualInfo))
+		oob = append(cmsghdrBuf, actualInfoBuf...)
 	}
 
 	var n int
@@ -293,6 +307,7 @@ func (fd *sctpFD) readMsg(b []byte) (int, *RcvInfo, int, error) {
 				switch m.Header.Type {
 				case _SCTP_CMSG_RCVINFO:
 					rcvInfo = (*RcvInfo)(unsafe.Pointer(&m.Data[0]))
+					rcvInfo.Ppid = Ntohui32(rcvInfo.Ppid) // convert from network byte order
 				}
 			}
 		}
