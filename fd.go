@@ -247,21 +247,20 @@ func (fd *sctpFD) writeMsg(b []byte, info *SndInfo, to *net.IPAddr, flags int) (
 	return n, nil
 }
 
-func (fd *sctpFD) readMsg(b []byte, flags int) (int, *RcvInfo, error) {
+// Fills regular data or notification data in b.
+// Inspect rcvFlags for SCTP_NOTIFICATION to distinguish them
+// Inspect rcvFlags for SCTP_EOR to know if a whole STCP message is read or just a part of it
+func (fd *sctpFD) readMsg(b []byte) (int, *RcvInfo, int, error) {
 	if !fd.initialized() {
-		return 0, nil, errEINVAL
+		return 0, nil, 0, errEINVAL
 	}
 	var err error
-	var n, oobn, recvflags int
+	var n, oobn, recvFlags int
 	var oob = make([]byte, 256)
 	doErr := fd.rc.Read(func(fd uintptr) bool {
 		for {
-			n, oobn, recvflags, _, err = syscall.Recvmsg(int(fd), b, oob, flags)
+			n, oobn, recvFlags, _, err = syscall.Recvmsg(int(fd), b, oob, 0)
 			if err == nil {
-				if recvflags&SCTP_NOTIFICATION > 0 {
-					log.Printf("This is a notification")
-					continue
-				}
 				return true // err not set
 			}
 			switch err {
@@ -274,20 +273,20 @@ func (fd *sctpFD) readMsg(b []byte, flags int) (int, *RcvInfo, error) {
 		}
 	})
 	if doErr != nil {
-		return 0, nil, doErr
+		return 0, nil, 0, doErr
 	}
 	if err != nil {
-		return 0, nil, os.NewSyscallError("recvmsg", err)
+		return 0, nil, 0, os.NewSyscallError("recvmsg", err)
 	}
 	if n == 0 && oobn == 0 {
-		return 0, nil, io.EOF
+		return 0, nil, 0, io.EOF
 	}
 
 	var rcvInfo *RcvInfo
 	if oobn > 0 {
 		msgs, err := unix.ParseSocketControlMessage(oob[:oobn])
 		if err != nil {
-			return 0, nil, err
+			return 0, nil, 0, err
 		}
 		for _, m := range msgs {
 			if m.Header.Level == unix.IPPROTO_SCTP {
@@ -298,7 +297,8 @@ func (fd *sctpFD) readMsg(b []byte, flags int) (int, *RcvInfo, error) {
 			}
 		}
 	}
-	return n, rcvInfo, nil
+
+	return n, rcvInfo, recvFlags, nil
 }
 
 func (fd *sctpFD) refreshLocalAddr() {
@@ -393,6 +393,33 @@ func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
 	}
 
 	return sctpAddr, nil
+}
+
+func (fd *sctpFD) subscribe(event EventType, enabled bool) error {
+	if !fd.initialized() {
+		return errEINVAL
+	}
+	const SCTP_EVENT = 127
+	type sctpEventType struct {
+		_      int32
+		seType uint16
+		seOn   uint8
+	}
+
+	sctpEvent := sctpEventType{seType: uint16(event), seOn: uint8(boolint(enabled))}
+	sctpEventBuf := unsafe.Slice((*byte)(unsafe.Pointer(&sctpEvent)), unsafe.Sizeof(sctpEvent))
+
+	var err error
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = unix.SetsockoptString(int(fd), unix.IPPROTO_SCTP, SCTP_EVENT, string(sctpEventBuf))
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
+	return nil
 }
 
 func (fd *sctpFD) ctrlNetwork() string {

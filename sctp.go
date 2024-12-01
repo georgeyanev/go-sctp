@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"golang.org/x/sys/unix"
 	"runtime"
+	"unsafe"
 )
 
 // SndInfo flags
@@ -21,6 +22,10 @@ const (
 	SCTP_SACK_IMMEDIATELY = 8
 	SCTP_PR_SCTP_ALL      = 128
 	SCTP_NOTIFICATION     = 0x8000
+)
+
+const (
+	SCTP_EOR = unix.MSG_EOR
 )
 
 // InitOptions structure provides information for initializing new SCTP associations
@@ -41,6 +46,13 @@ type InitOptions struct {
 	// unless we run as a privileged user
 	SocketReadBufferSize  int
 	SocketWriteBufferSize int
+
+	// This option requests that the local endpoint set the specified
+	// Adaptation Layer Indication parameter. If the value is `true`
+	// the Adaptation Layer Indication parameter is set to the value
+	// specified in the AdaptationIndication field.
+	AdaptationIndicationEnabled bool
+	AdaptationIndication        uint32
 }
 
 // SndInfo structure specifies SCTP options for sending SCTP messages
@@ -132,6 +144,8 @@ type RcvInfo struct {
 	AssocID int32
 }
 
+// TODO: Add Shutdown functions and test Shutdown event
+// TODO: convert ppid to and from network byte order in SndInfo and RcvInfo
 // TODO: Add WriteMsg function with 'to' and 'EOR' ability (for the eor too work an EOR socket option is needed)
 // TODO: In refreshRemoteAddr if getRemoteAddr fails, use GetPeerAddr
 // WriteMsg(byte, snd_info)
@@ -149,6 +163,38 @@ type RcvInfo struct {
 // TODO: Add test from dial_unix_test.go
 // TODO: Test for timeouts with Accept (setReadDeadLine)
 // TODO: Set finalizer for sctpFD?
+
+// Htonui32 does host to network byte order for an uint32
+func Htonui32(i uint32) uint32 {
+	var res uint32
+	p := (*[4]byte)(unsafe.Pointer(&res))
+	p[0] = byte(i >> 24)
+	p[1] = byte(i >> 16)
+	p[2] = byte(i >> 8)
+	p[3] = byte(i)
+	return res
+}
+
+// Ntohui32 does network to host byte order for an uint32
+func Ntohui32(i uint32) uint32 {
+	p := (*[4]byte)(unsafe.Pointer(&i))
+	return uint32(p[0])<<24 + uint32(p[1])<<16 + uint32(p[2])<<8 + uint32(p[3])
+}
+
+// Htonui16 does host to network byte order for an uint16
+func Htonui16(i uint16) uint16 {
+	var res uint16
+	p := (*[2]byte)(unsafe.Pointer(&res))
+	p[0] = byte(i >> 8)
+	p[1] = byte(i)
+	return res
+}
+
+// Ntohui16 does network to host byte order for an uint16
+func Ntohui16(i uint16) uint16 {
+	p := (*[2]byte)(unsafe.Pointer(&i))
+	return uint16(p[0])<<8 + uint16(p[1])
+}
 
 func getGoroutineID() uint64 {
 	buf := make([]byte, 64)
