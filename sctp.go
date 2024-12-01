@@ -3,19 +3,7 @@
 package sctp
 
 import (
-	"fmt"
 	"golang.org/x/sys/unix"
-	"runtime"
-	"unsafe"
-)
-
-// SndInfo flags
-const (
-	SCTP_UNORDERED = 1
-	SCTP_ADDR_OVER = 2
-	SCTP_ABORT     = 4
-	SCTP_SENDALL   = 64
-	SCTP_EOF       = unix.MSG_FIN
 )
 
 const (
@@ -62,34 +50,11 @@ type SndInfo struct {
 	// stream number, an error indication is returned and the call fails
 	Sid uint16
 
-	// Flags:  This field may contain any of the following flags and is
-	// composed of a bitwise OR of these values.
-	//
-	//   SCTP_UNORDERED:  This flag requests the unordered delivery of the
-	//      message.  If this flag is clear, the datagram is considered an
-	//      ordered send.
-	//
-	//   SCTP_ADDR_OVER:  This flag is filled automatically by WriteMsg function,
-	//      when a 'to' address is specified
-	//
-	//   SCTP_ABORT:  Setting this flag causes the specified association to
-	//      abort by sending an ABORT message to the peer.  The ABORT chunk
-	//      will contain an error cause of 'User Initiated Abort' with
-	//      cause code 12.  The cause-specific information of this error
-	//      cause is provided in the byte buffer passed in.
-	//
-	//   SCTP_EOF:  Setting this flag invokes the SCTP graceful shutdown
-	//      procedures on the specified association.  Graceful shutdown
-	//      assures that all data queued by both endpoints is successfully
-	//      transmitted before closing the association.
-	//
-	//   SCTP_SENDALL: For the one-to-one style socket, this flag has no effect.
+	// Flags:  This field is composed of a bitwise OR of the values
+	// defined in SndInfo flags
 	Flags uint16
 
 	// Payload protocol identifier
-	// Note that the SCTP stack performs no byte order modification of this field.
-	// For example, if the DATA chunk has to contain a given value in
-	// network byte order, the SCTP user has to perform the htonl() computation
 	Ppid uint32
 
 	// This value is an opaque 32-bit context datum that is
@@ -101,6 +66,34 @@ type SndInfo struct {
 	// Association ID is ignored in one-to-one mode
 	AssocID int32
 }
+
+// SndInfo flags
+const (
+	// SCTP_UNORDERED flag requests the unordered delivery of the
+	// message.  If this flag is clear, the datagram is considered an
+	// ordered send.
+	SCTP_UNORDERED = 1
+
+	// SCTP_ADDR_OVER is filled automatically by WriteMsg function,
+	// when a 'to' address is specified
+	SCTP_ADDR_OVER = 2
+
+	// SCTP_ABORT causes the specified association to
+	// abort by sending an ABORT message to the peer.  The ABORT chunk
+	// will contain an error cause of 'User Initiated Abort' with
+	// cause code 12.  The cause-specific information of this error
+	// cause is provided in the byte buffer passed in.
+	SCTP_ABORT = 4
+
+	// SCTP_SENDALL has no effect for the one-to-one style socket
+	SCTP_SENDALL = 64
+
+	// SCTP_EOF invokes the SCTP graceful shutdown
+	// procedures on the specified association.  Graceful shutdown
+	// assures that all data queued by both endpoints is successfully
+	// transmitted before closing the association.
+	SCTP_EOF = unix.MSG_FIN
+)
 
 // RcvInfo structure describes SCTP receive information about a received message
 type RcvInfo struct {
@@ -123,9 +116,6 @@ type RcvInfo struct {
 	_ uint16
 
 	// Payload protocol identifier
-	// Note that the SCTP stack performs no byte order modification of this field.
-	// For example, if the DATA chunk has to contain a given value in network
-	// byte order, the SCTP user has to perform the ntohl() computation.
 	Ppid uint32
 
 	// TSN that was assigned to one of the SCTP DATA chunks
@@ -145,7 +135,7 @@ type RcvInfo struct {
 }
 
 // TODO: Add Shutdown functions and test Shutdown event
-// TODO: convert ppid to and from network byte order in SndInfo and RcvInfo
+// this will involve implementing SCTP_SEND_FAILED_EVENT event, and get/set SO_LINGER option
 // TODO: Add WriteMsg function with 'to' and 'EOR' ability (for the eor too work an EOR socket option is needed)
 // TODO: In refreshRemoteAddr if getRemoteAddr fails, use GetPeerAddr
 // WriteMsg(byte, snd_info)
@@ -163,45 +153,3 @@ type RcvInfo struct {
 // TODO: Add test from dial_unix_test.go
 // TODO: Test for timeouts with Accept (setReadDeadLine)
 // TODO: Set finalizer for sctpFD?
-
-// Htonui32 does host to network byte order for an uint32
-func Htonui32(i uint32) uint32 {
-	var res uint32
-	p := (*[4]byte)(unsafe.Pointer(&res))
-	p[0] = byte(i >> 24)
-	p[1] = byte(i >> 16)
-	p[2] = byte(i >> 8)
-	p[3] = byte(i)
-	return res
-}
-
-// Ntohui32 does network to host byte order for an uint32
-func Ntohui32(i uint32) uint32 {
-	p := (*[4]byte)(unsafe.Pointer(&i))
-	return uint32(p[0])<<24 + uint32(p[1])<<16 + uint32(p[2])<<8 + uint32(p[3])
-}
-
-// Htonui16 does host to network byte order for an uint16
-func Htonui16(i uint16) uint16 {
-	var res uint16
-	p := (*[2]byte)(unsafe.Pointer(&res))
-	p[0] = byte(i >> 8)
-	p[1] = byte(i)
-	return res
-}
-
-// Ntohui16 does network to host byte order for an uint16
-func Ntohui16(i uint16) uint16 {
-	p := (*[2]byte)(unsafe.Pointer(&i))
-	return uint16(p[0])<<8 + uint16(p[1])
-}
-
-func getGoroutineID() uint64 {
-	buf := make([]byte, 64)
-	n := runtime.Stack(buf, false)
-	buf = buf[:n]
-	// The format will look like "goroutine 1234 [running]:"
-	var id uint64
-	fmt.Sscanf(string(buf), "goroutine %d ", &id)
-	return id
-}

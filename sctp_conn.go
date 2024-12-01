@@ -2,8 +2,11 @@ package sctp
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"runtime"
+	"unsafe"
 )
 
 type SCTPConn struct {
@@ -246,4 +249,46 @@ func newSCTPConnNew(fd *sctpFD) *SCTPConn {
 
 	// TO DO: set heartbeat disable here or heartbeat interval
 	return &SCTPConn{conn{fd: fd}}
+}
+
+// Htonui32 does host to network byte order for an uint32
+func Htonui32(i uint32) uint32 {
+	var res uint32
+	p := (*[4]byte)(unsafe.Pointer(&res))
+	p[0] = byte(i >> 24)
+	p[1] = byte(i >> 16)
+	p[2] = byte(i >> 8)
+	p[3] = byte(i)
+	return res
+}
+
+// Ntohui32 does network to host byte order for an uint32
+func Ntohui32(i uint32) uint32 {
+	p := (*[4]byte)(unsafe.Pointer(&i))
+	return uint32(p[0])<<24 + uint32(p[1])<<16 + uint32(p[2])<<8 + uint32(p[3])
+}
+
+// Htonui16 does host to network byte order for an uint16
+func Htonui16(i uint16) uint16 {
+	var res uint16
+	p := (*[2]byte)(unsafe.Pointer(&res))
+	p[0] = byte(i >> 8)
+	p[1] = byte(i)
+	return res
+}
+
+// Ntohui16 does network to host byte order for an uint16
+func Ntohui16(i uint16) uint16 {
+	p := (*[2]byte)(unsafe.Pointer(&i))
+	return uint16(p[0])<<8 + uint16(p[1])
+}
+
+func getGoroutineID() uint64 {
+	buf := make([]byte, 64)
+	n := runtime.Stack(buf, false)
+	buf = buf[:n]
+	// The format will look like "goroutine 1234 [running]:"
+	var id uint64
+	fmt.Sscanf(string(buf), "goroutine %d ", &id)
+	return id
 }
