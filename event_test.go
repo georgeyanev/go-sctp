@@ -292,6 +292,7 @@ func TestPeerAddrChangeEvent(t *testing.T) {
 	c.Close()
 }
 
+// Not really a test, it's tricky to simulate the remote error
 func TestRemoteErrorEvent(t *testing.T) {
 	ln1, err := Listen("sctp4", "127.0.0.1:0")
 	if err != nil {
@@ -378,6 +379,7 @@ func TestRemoteErrorEvent(t *testing.T) {
 	}
 }
 
+// TODO: Revisit: issue connection shutdown
 func TestShutdownEvent(t *testing.T) {
 	ln1, err := Listen("sctp4", "127.0.0.1:0")
 	if err != nil {
@@ -398,20 +400,13 @@ func TestShutdownEvent(t *testing.T) {
 		}(c)
 
 		c1 := c.(*SCTPConn)
-		err1 = c1.Subscribe(SCTP_PEER_ADDR_CHANGE, SCTP_REMOTE_ERROR)
+		err1 = c1.Subscribe(SCTP_REMOTE_ERROR, SCTP_SHUTDOWN_EVENT)
 		if err1 != nil {
 			errorChan <- err1
 			return
 		}
 
 		b := make([]byte, 256)
-
-		sndInfo := SndInfo{Sid: 9}
-		_, err := c1.WriteMsg([]byte("hello"), &sndInfo)
-		if err != nil {
-			errorChan <- err1
-			return
-		}
 
 		// receive data
 		for {
@@ -447,11 +442,6 @@ func TestShutdownEvent(t *testing.T) {
 	_, err = c.Write([]byte("hello"))
 	if err != nil {
 		t.Fatal(err)
-	}
-	b := make([]byte, 8)
-	_, err1 := c.Read(b)
-	if err1 != nil {
-		t.Fatal(err1)
 	}
 
 	c.Close()

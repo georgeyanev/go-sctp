@@ -17,7 +17,7 @@ const (
 	_SCTP_SEND_FAILED // use SCTP_SEND_FAILED_EVENT
 	SCTP_REMOTE_ERROR
 	SCTP_SHUTDOWN_EVENT
-	SCTP_PARTIAL_DELIVERY_EVENT
+	_SCTP_PARTIAL_DELIVERY_EVENT // not implemented due to discrepancies between sctp.h and RFC6458
 	SCTP_ADAPTATION_INDICATION
 	SCTP_AUTHENTICATION_EVENT
 	SCTP_SENDER_DRY_EVENT
@@ -25,57 +25,6 @@ const (
 	SCTP_ASSOC_RESET_EVENT
 	SCTP_STREAM_CHANGE_EVENT
 	SCTP_SEND_FAILED_EVENT
-)
-
-// SCTP_ASSOC_CHANGE state
-const (
-	// SCTP_COMM_UP shows that a new association is now ready, and data may be
-	// exchanged with this peer.  When an association has been
-	// established successfully, this notification should be the first one.
-	SCTP_COMM_UP = iota
-
-	// SCTP_COMM_LOST shows that the association has failed.  The association is
-	// now in the closed state.  If SEND_FAILED notifications are
-	// turned on, an SCTP_COMM_LOST is accompanied by a series of
-	// SCTP_SEND_FAILED_EVENT events, one for each outstanding message.
-	SCTP_COMM_LOST
-
-	// SCTP_RESTART shows that the peer has restarted.
-	SCTP_RESTART
-
-	// SCTP_SHUTDOWN_COMP means the association has gracefully closed.
-	SCTP_SHUTDOWN_COMP
-
-	// SCTP_CANT_STR_ASSOC shows that the association setup failed.
-	SCTP_CANT_STR_ASSOC
-)
-
-// SCTP_PEER_ADDR_CHANGE state
-const (
-	// SCTP_ADDR_AVAILABLE shows that this address is now reachable.  This
-	// notification is provided whenever an address becomes reachable.
-	SCTP_ADDR_AVAILABLE = iota
-
-	// SCTP_ADDR_UNREACHABLE shows that the address specified can no longer be
-	// reached.  Any data sent to this address is rerouted to an
-	// alternate until this address becomes reachable.  This
-	// notification is provided whenever an address becomes
-	// unreachable.
-	SCTP_ADDR_UNREACHABLE
-
-	// SCTP_ADDR_REMOVED shows that the address is no longer part of the association.
-	SCTP_ADDR_REMOVED
-
-	// SCTP_ADDR_ADDED shows that the address is now part of the association.
-	SCTP_ADDR_ADDED
-
-	// SCTP_ADDR_MADE_PRIM shows that this address has now been made the primary
-	// destination address.  This notification is provided whenever an
-	// address is made primary.
-	SCTP_ADDR_MADE_PRIM
-
-	SCTP_ADDR_CONFIRMED
-	SCTP_ADDR_POTENTIALLY_FAILED
 )
 
 type Event interface {
@@ -108,6 +57,29 @@ type AssocChangeEvent struct {
 	Info []byte
 }
 
+// SCTP_ASSOC_CHANGE state
+const (
+	// SCTP_COMM_UP shows that a new association is now ready, and data may be
+	// exchanged with this peer.  When an association has been
+	// established successfully, this notification should be the first one.
+	SCTP_COMM_UP = iota
+
+	// SCTP_COMM_LOST shows that the association has failed.  The association is
+	// now in the closed state.  If SEND_FAILED notifications are
+	// turned on, an SCTP_COMM_LOST is accompanied by a series of
+	// SCTP_SEND_FAILED_EVENT events, one for each outstanding message.
+	SCTP_COMM_LOST
+
+	// SCTP_RESTART shows that the peer has restarted.
+	SCTP_RESTART
+
+	// SCTP_SHUTDOWN_COMP means the association has gracefully closed.
+	SCTP_SHUTDOWN_COMP
+
+	// SCTP_CANT_STR_ASSOC shows that the association setup failed.
+	SCTP_CANT_STR_ASSOC
+)
+
 func (*AssocChangeEvent) Type() EventType { return SCTP_ASSOC_CHANGE }
 
 // Flags is ignored for this event
@@ -134,6 +106,34 @@ type PeerAddrChangeEvent struct {
 	// Association ID is ignored in one-to-one mode
 	AssocID int32
 }
+
+// SCTP_PEER_ADDR_CHANGE state
+const (
+	// SCTP_ADDR_AVAILABLE shows that this address is now reachable.  This
+	// notification is provided whenever an address becomes reachable.
+	SCTP_ADDR_AVAILABLE = iota
+
+	// SCTP_ADDR_UNREACHABLE shows that the address specified can no longer be
+	// reached.  Any data sent to this address is rerouted to an
+	// alternate until this address becomes reachable.  This
+	// notification is provided whenever an address becomes
+	// unreachable.
+	SCTP_ADDR_UNREACHABLE
+
+	// SCTP_ADDR_REMOVED shows that the address is no longer part of the association.
+	SCTP_ADDR_REMOVED
+
+	// SCTP_ADDR_ADDED shows that the address is now part of the association.
+	SCTP_ADDR_ADDED
+
+	// SCTP_ADDR_MADE_PRIM shows that this address has now been made the primary
+	// destination address.  This notification is provided whenever an
+	// address is made primary.
+	SCTP_ADDR_MADE_PRIM
+
+	SCTP_ADDR_CONFIRMED
+	SCTP_ADDR_POTENTIALLY_FAILED
+)
 
 func (*PeerAddrChangeEvent) Type() EventType { return SCTP_PEER_ADDR_CHANGE }
 
@@ -168,6 +168,23 @@ func (*ShutdownEvent) Type() EventType { return SCTP_SHUTDOWN_EVENT }
 // Flags is ignored for this event
 func (*ShutdownEvent) Flags() int { return 0 }
 
+// AdaptationEvent is delivered by SCTP to inform the application
+// about the peer's adaptation layer indication (When a peer sends
+// an Adaptation Layer Indication parameter as described in [RFC5061])
+type AdaptationEvent struct {
+	// This field holds the bit array sent by the peer
+	// in the Adaptation Layer Indication parameter
+	AdaptationInd uint32
+
+	// Association ID is ignored in one-to-one mode
+	AssocID int32
+}
+
+func (*AdaptationEvent) Type() EventType { return SCTP_ADAPTATION_INDICATION }
+
+// Flags is ignored for this event
+func (*AdaptationEvent) Flags() int { return 0 }
+
 type eventHeader struct {
 	snType   uint16
 	snFlags  uint16
@@ -190,8 +207,10 @@ func ParseEvent(b []byte) (Event, error) {
 		return parseRemoteErrorEvent(b)
 	case SCTP_SHUTDOWN_EVENT:
 		return parseShutdownEvent(b)
-	//case SCTP_PARTIAL_DELIVERY_EVENT:
-	//case SCTP_ADAPTATION_INDICATION:
+	case _SCTP_PARTIAL_DELIVERY_EVENT:
+		return nil, errors.New("SCTP_PARTIAL_DELIVERY_EVENT not implemented")
+	case SCTP_ADAPTATION_INDICATION:
+		return parseAdaptationEvent(b)
 	//case SCTP_AUTHENTICATION_EVENT:
 	//case SCTP_SENDER_DRY_EVENT:
 	//case SCTP_STREAM_RESET_EVENT:
@@ -290,5 +309,22 @@ func parseShutdownEvent(b []byte) (Event, error) {
 	se := (*shutdownEvent)(unsafe.Pointer(&b[0]))
 	return &ShutdownEvent{
 		AssocID: se.assocID,
+	}, nil
+}
+
+func parseAdaptationEvent(b []byte) (Event, error) {
+	type adaptationEvent struct {
+		eventHeader
+		adaptationInd uint32
+		assocID       int32
+	}
+	if len(b) < int(unsafe.Sizeof(adaptationEvent{})) {
+		return nil, errors.New("adaptationEvent event too short")
+	}
+
+	se := (*adaptationEvent)(unsafe.Pointer(&b[0]))
+	return &AdaptationEvent{
+		AdaptationInd: se.adaptationInd,
+		AssocID:       se.assocID,
 	}, nil
 }
