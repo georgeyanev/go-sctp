@@ -827,7 +827,7 @@ func (fd *sctpFD) connect(ctx context.Context, s int, raddr *SCTPAddr) (ret erro
 		if err = fd.init(s); err != nil {
 			return err
 		}
-		runtime.KeepAlive(fd)
+		runtime.KeepAlive(fd.f)
 		return nil
 
 	default:
@@ -970,6 +970,6 @@ func (fd *sctpFD) connect(ctx context.Context, s int, raddr *SCTPAddr) (ret erro
 			log.Printf("SO_ERROR: %d, %v", err.(syscall.Errno), err)
 			return os.NewSyscallError("connect", err)
 		}
-		runtime.KeepAlive(fd)
+		runtime.KeepAlive(fd.f)
 	}
 }
