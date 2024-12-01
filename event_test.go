@@ -3,6 +3,7 @@ package sctp
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -195,8 +196,7 @@ func TestPeerAddrChangeEvent(t *testing.T) {
 			return
 		}
 		c1.RefreshRemoteAddr()
-		log.Printf("Reading 1..., raddr: %s", c1.RemoteAddr().String())
-		log.Println("Reading 1... done")
+		log.Printf("Reading 1..., raddr: %s done", c1.RemoteAddr().String())
 		if (recvFlags & SCTP_NOTIFICATION) == SCTP_NOTIFICATION {
 			errorChan <- errors.New("expected data message")
 			return
@@ -344,7 +344,7 @@ func TestRemoteErrorEvent(t *testing.T) {
 					errorChan <- err1
 					return
 				}
-				log.Printf("Notification parsed: %v", e)
+				log.Printf("Notification parsed: %T: %v", e, e)
 			} else {
 				log.Printf("Data is received: %s", string(b[:n]))
 			}
@@ -424,7 +424,7 @@ func TestShutdownEvent(t *testing.T) {
 					errorChan <- err1
 					return
 				}
-				log.Printf("Notification parsed: %v", e)
+				log.Printf("Notification parsed:%T: %v", e, e)
 			} else {
 				log.Printf("Data is received: %s", string(b[:n]))
 			}
@@ -433,6 +433,115 @@ func TestShutdownEvent(t *testing.T) {
 
 	var d = Dialer{
 		LocalAddr: &SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IP{127, 0, 0, 1}}}},
+	}
+	c, err := d.Dial("sctp4", ln1.Addr().String())
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Dial: %s ------> %s", c.LocalAddr().String(), c.RemoteAddr().String())
+	_, err = c.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.Close()
+	select {
+	case <-closeChan:
+	case err = <-errorChan:
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestAdaptationEvent(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = ln1.(*SCTPListener).Subscribe(SCTP_ADAPTATION_INDICATION); err != nil {
+		t.Fatal(err)
+	}
+
+	closeChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
+		c, err1 := ln1.Accept()
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		defer func(c net.Conn) {
+			c.Close()
+			close(closeChan)
+		}(c)
+
+		b := make([]byte, 256)
+		c1 := c.(*SCTPConn)
+
+		// receive adaptation event data
+		log.Println("Reading event ...")
+		n, _, recvFlags, err1 := c1.ReadMsg(b)
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		log.Println("Reading event ... done")
+
+		if (recvFlags & SCTP_NOTIFICATION) != SCTP_NOTIFICATION {
+			errorChan <- errors.New("expected SCTP_ADAPTATION_INDICATION event")
+			return
+		}
+		if (recvFlags & SCTP_EOR) != SCTP_EOR {
+			errorChan <- errors.New("expected whole message")
+			return
+		}
+
+		e, err1 := ParseEvent(b[:n])
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+
+		ae, ok := e.(*AdaptationEvent)
+		if !ok {
+			errorChan <- errors.New("expected AdaptationEvent")
+			return
+		}
+		if ae.AdaptationInd != 0x01020304 {
+			errorChan <- errors.New(fmt.Sprintf("unexpected AdaptationInd: %d, expected 0x01020304", ae.AdaptationInd))
+			return
+		}
+
+		// read data
+		n, _, recvFlags, err1 = c1.ReadMsg(b)
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		log.Printf("Reading 1..., raddr: %s done", c1.RemoteAddr().String())
+		if (recvFlags & SCTP_NOTIFICATION) == SCTP_NOTIFICATION {
+			errorChan <- errors.New("expected data message")
+			return
+		}
+		if (recvFlags & SCTP_EOR) != SCTP_EOR {
+			errorChan <- errors.New("expected whole message")
+			return
+		}
+		if !bytes.Equal(b[:n], []byte("hello")) {
+			errorChan <- errors.New("expected equal 'hello', got: " + string(b[:n]))
+			return
+		}
+
+	}()
+
+	var d = Dialer{
+		LocalAddr: &SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IP{127, 0, 0, 1}}}},
+		InitOptions: InitOptions{
+			AdaptationIndicationEnabled: true,
+			AdaptationIndication:        0x01020304,
+		},
 	}
 	c, err := d.Dial("sctp4", ln1.Addr().String())
 	if err != nil {
