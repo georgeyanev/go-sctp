@@ -161,6 +161,7 @@ func TestAssocChangeEvent(t *testing.T) {
 // For this test to work, the kernel parameters `net.sctp.addip_enable`
 // and `net.sctp.addip_noauth_enable` must be set to 1.
 func TestPeerAddrChangeEvent(t *testing.T) {
+	t.Skip("Comment this to execute the test")
 	ln1, err := Listen("sctp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
