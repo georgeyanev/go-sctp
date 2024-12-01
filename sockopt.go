@@ -202,6 +202,29 @@ func (fd *sctpFD) getReadBuffer() (int, error) {
 	return sndBuf, nil
 }
 
+func (fd *sctpFD) setLinger(sec int) error {
+	var l unix.Linger
+	if sec >= 0 {
+		l.Onoff = 1
+		l.Linger = int32(sec)
+	} else {
+		l.Onoff = 0
+		l.Linger = 0
+	}
+
+	var err error
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = unix.SetsockoptLinger(int(fd), unix.SOL_SOCKET, unix.SO_LINGER, &l)
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
+	return nil
+}
+
 func getsockoptBytes(fd, level, opt int, b []byte) error {
 	p := unsafe.Pointer(&b[0])
 	vallen := uint32(len(b))
