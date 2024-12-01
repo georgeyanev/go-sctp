@@ -244,6 +244,17 @@ func (c *SCTPConn) GetReadBuffer() (int, error) {
 	return sbSize, nil
 }
 
+func (c *SCTPConn) SetLinger(sec int) error {
+	if !c.ok() {
+		return errEINVAL
+	}
+	err := c.fd.setLinger(sec)
+	if err != nil {
+		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return nil
+}
+
 func newSCTPConnNew(fd *sctpFD) *SCTPConn {
 	_ = fd.setNoDelay(true)
 
