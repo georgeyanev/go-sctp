@@ -46,6 +46,13 @@ type InitOptions struct {
 	// unless we run as a privileged user
 	SocketReadBufferSize  int
 	SocketWriteBufferSize int
+
+	// This option requests that the local endpoint set the specified
+	// Adaptation Layer Indication parameter. If the value is `true`
+	// the Adaptation Layer Indication parameter is set to the value
+	// specified in the AdaptationIndication field.
+	AdaptationIndicationEnabled bool
+	AdaptationIndication        uint32
 }
 
 // SndInfo structure specifies SCTP options for sending SCTP messages

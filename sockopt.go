@@ -75,6 +75,20 @@ func setInitOptions(fd int, initOptions InitOptions) error {
 		return err
 	}
 
+	// set adaptation layer indication
+	if initOptions.AdaptationIndicationEnabled {
+		const SCTP_ADAPTATION_LAYER = 7
+		type setAdaptation struct {
+			adaptationInd uint32
+		}
+		sa := setAdaptation{
+			adaptationInd: initOptions.AdaptationIndication,
+		}
+		saBuf := unsafe.Slice((*byte)(unsafe.Pointer(&sa)), unsafe.Sizeof(sa))
+		if err = unix.SetsockoptString(fd, unix.IPPROTO_SCTP, SCTP_ADAPTATION_LAYER, string(saBuf)); err != nil {
+			return os.NewSyscallError("setsockopt", err)
+		}
+	}
 	return nil
 }
 
