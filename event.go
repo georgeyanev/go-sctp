@@ -17,7 +17,7 @@ const (
 	_SCTP_SEND_FAILED // use SCTP_SEND_FAILED_EVENT
 	SCTP_REMOTE_ERROR
 	SCTP_SHUTDOWN_EVENT
-	_SCTP_PARTIAL_DELIVERY_EVENT // not implemented due to discrepancies between sctp.h and RFC6458
+	SCTP_PARTIAL_DELIVERY_EVENT // not implemented due to discrepancies between sctp.h and RFC6458
 	SCTP_ADAPTATION_INDICATION
 	SCTP_AUTHENTICATION_EVENT
 	SCTP_SENDER_DRY_EVENT
@@ -207,16 +207,22 @@ func ParseEvent(b []byte) (Event, error) {
 		return parseRemoteErrorEvent(b)
 	case SCTP_SHUTDOWN_EVENT:
 		return parseShutdownEvent(b)
-	case _SCTP_PARTIAL_DELIVERY_EVENT:
+	case SCTP_PARTIAL_DELIVERY_EVENT:
 		return nil, errors.New("SCTP_PARTIAL_DELIVERY_EVENT not implemented")
 	case SCTP_ADAPTATION_INDICATION:
 		return parseAdaptationEvent(b)
-	//case SCTP_AUTHENTICATION_EVENT:
-	//case SCTP_SENDER_DRY_EVENT:
-	//case SCTP_STREAM_RESET_EVENT:
-	//case SCTP_ASSOC_RESET_EVENT:
-	//case SCTP_STREAM_CHANGE_EVENT:
-	//case SCTP_SEND_FAILED_EVENT:
+	case SCTP_AUTHENTICATION_EVENT:
+		return nil, errors.New("SCTP_AUTHENTICATION_EVENT not implemented")
+	case SCTP_SENDER_DRY_EVENT:
+		return nil, errors.New("SCTP_SENDER_DRY_EVENT not implemented")
+	case SCTP_STREAM_RESET_EVENT:
+		return nil, errors.New("SCTP_STREAM_RESET_EVENT not implemented")
+	case SCTP_ASSOC_RESET_EVENT:
+		return nil, errors.New("SCTP_ASSOC_RESET_EVENT not implemented")
+	case SCTP_STREAM_CHANGE_EVENT:
+		return nil, errors.New("SCTP_STREAM_CHANGE_EVENT not implemented")
+	case SCTP_SEND_FAILED_EVENT:
+		return nil, errors.New("SCTP_SEND_FAILED_EVENT not implemented")
 	default:
 		return nil, errors.New("unknown event type: " + strconv.Itoa(int(hdr.snType)))
 	}
