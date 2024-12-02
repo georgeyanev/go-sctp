@@ -96,6 +96,14 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+// Close closes the association.
+// By default, a graceful close is performed and
+// a SHUTDOWN message is sent to the peer.
+// If different behaviour is desired (i.e. immediate
+// close and sending ABORT chunk), use the SCTPConn.SetLinger
+// function.
+// Also, different close behaviour can be achieved by using
+// the SndInfo flags appropriately.
 func (c *conn) Close() error {
 	if !c.ok() {
 		return syscall.EINVAL
