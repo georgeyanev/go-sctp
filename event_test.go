@@ -380,9 +380,13 @@ func TestRemoteErrorEvent(t *testing.T) {
 	}
 }
 
-// TODO: Revisit: issue connection shutdown
 func TestShutdownEvent(t *testing.T) {
 	ln1, err := Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = ln1.(*SCTPListener).Subscribe(SCTP_REMOTE_ERROR, SCTP_SHUTDOWN_EVENT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,11 +405,108 @@ func TestShutdownEvent(t *testing.T) {
 		}(c)
 
 		c1 := c.(*SCTPConn)
-		err1 = c1.Subscribe(SCTP_REMOTE_ERROR, SCTP_SHUTDOWN_EVENT)
+
+		b := make([]byte, 256)
+
+		// read data
+		n, _, recvFlags, err1 := c1.ReadMsg(b)
 		if err1 != nil {
 			errorChan <- err1
 			return
 		}
+		log.Printf("Reading 1..., raddr: %s done", c1.RemoteAddr().String())
+		if (recvFlags & SCTP_NOTIFICATION) == SCTP_NOTIFICATION {
+			errorChan <- errors.New("expected data message")
+			return
+		}
+		if (recvFlags & SCTP_EOR) != SCTP_EOR {
+			errorChan <- errors.New("expected whole message")
+			return
+		}
+		if !bytes.Equal(b[:n], []byte("hello")) {
+			errorChan <- errors.New("expected equal 'hello', got: " + string(b[:n]))
+			return
+		}
+
+		// read shutdown event
+		log.Println("Reading event ...")
+		n, _, recvFlags, err1 = c1.ReadMsg(b)
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		log.Println("Reading event ... done")
+
+		if (recvFlags & SCTP_NOTIFICATION) != SCTP_NOTIFICATION {
+			errorChan <- errors.New("expected SCTP_ADAPTATION_INDICATION event")
+			return
+		}
+		if (recvFlags & SCTP_EOR) != SCTP_EOR {
+			errorChan <- errors.New("expected whole message")
+			return
+		}
+
+		e, err1 := ParseEvent(b[:n])
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+
+		_, ok := e.(*ShutdownEvent)
+		if !ok {
+			errorChan <- errors.New("expected ShutdownEvent")
+			return
+		}
+	}()
+
+	var d = Dialer{
+		LocalAddr: &SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IP{127, 0, 0, 1}}}},
+	}
+	c, err := d.Dial("sctp4", ln1.Addr().String())
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Dial: %s ------> %s", c.LocalAddr().String(), c.RemoteAddr().String())
+	_, err = c.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.Close() // sends SCTP_SHUTDOWN_EVENT
+	select {
+	case <-closeChan:
+	case err = <-errorChan:
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+}
+
+// Tweak close to send abort. Then on peer expect SCTP_ASSOC_CHANGE event
+// with SCTP_COMM_LOST state and the Abort chunk present in AssocChangeEvent.Info
+func TestAbort(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ln1.(*SCTPListener).Subscribe(SCTP_ASSOC_CHANGE); err != nil {
+		t.Fatal(err)
+	}
+
+	closeChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
+		c, err1 := ln1.Accept()
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		defer func(c net.Conn) {
+			c.Close()
+			close(closeChan)
+		}(c)
+
+		c1 := c.(*SCTPConn)
 
 		b := make([]byte, 256)
 
@@ -425,7 +526,15 @@ func TestShutdownEvent(t *testing.T) {
 					errorChan <- err1
 					return
 				}
-				log.Printf("Notification parsed:%T: %v", e, e)
+				log.Printf("Notification parsed: %T: %v", e, e)
+				ace, ok := e.(*AssocChangeEvent)
+				if !ok {
+					errorChan <- errors.New("expected AssocChangeEvent")
+					return
+				}
+				if ace.State == SCTP_COMM_LOST && len(ace.Info) > 0 {
+					return
+				}
 			} else {
 				log.Printf("Data is received: %s", string(b[:n]))
 			}
@@ -438,6 +547,10 @@ func TestShutdownEvent(t *testing.T) {
 	c, err := d.Dial("sctp4", ln1.Addr().String())
 	if err != nil {
 		log.Fatal(err)
+	}
+	// We want Close to cause Abort
+	if err = c.(*SCTPConn).SetLinger(0); err != nil {
+		t.Fatal(err)
 	}
 	log.Printf("Dial: %s ------> %s", c.LocalAddr().String(), c.RemoteAddr().String())
 	_, err = c.Write([]byte("hello"))
@@ -563,3 +676,111 @@ func TestAdaptationEvent(t *testing.T) {
 		}
 	}
 }
+
+// Not really a test
+//func TestBase(t *testing.T) {
+//	ln1, err := Listen("sctp4", "127.0.0.1:0")
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	closeChan := make(chan struct{})
+//	errorChan := make(chan error)
+//	go func() {
+//		c, err1 := ln1.Accept()
+//		if err1 != nil {
+//			errorChan <- err1
+//			return
+//		}
+//		defer func(c net.Conn) {
+//			c.Close()
+//			close(closeChan)
+//		}(c)
+//
+//		c1 := c.(*SCTPConn)
+//		err1 = c1.Subscribe(SCTP_PEER_ADDR_CHANGE,
+//			SCTP_REMOTE_ERROR,
+//			SCTP_SHUTDOWN_EVENT,
+//			SCTP_ASSOC_RESET_EVENT,
+//			SCTP_STREAM_RESET_EVENT,
+//			SCTP_ASSOC_CHANGE)
+//		if err1 != nil {
+//			errorChan <- err1
+//			return
+//		}
+//
+//		b := make([]byte, 256)
+//
+//		sndInfo := SndInfo{Sid: 9, Ppid: 0x01020304}
+//		_, err := c1.WriteMsg([]byte("hello"), &sndInfo)
+//		if err != nil {
+//			errorChan <- err1
+//			return
+//		}
+//
+//		// receive data
+//		for {
+//			log.Println("Reading ...")
+//			n, _, recvFlags, err1 := c1.ReadMsg(b)
+//			if err1 != nil {
+//				errorChan <- err1
+//				return
+//			}
+//			log.Println("Reading ... done")
+//			if (recvFlags & SCTP_NOTIFICATION) == SCTP_NOTIFICATION {
+//				log.Println("Notification is received, about to parse")
+//				e, err1 := ParseEvent(b[:n])
+//				if err1 != nil {
+//					errorChan <- err1
+//					return
+//				}
+//				log.Printf("Notification parsed: %T: %v", e, e)
+//			} else {
+//				log.Printf("Data is received: %s", string(b[:n]))
+//			}
+//		}
+//	}()
+//
+//	var d = Dialer{
+//		LocalAddr: &SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IP{127, 0, 0, 1}}}},
+//	}
+//	c, err := d.Dial("sctp4", ln1.Addr().String())
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	// we want close to cause Abort
+//	if err = c.(*SCTPConn).SetLinger(0); err != nil {
+//		t.Fatal(err)
+//	}
+//	log.Printf("Dial: %s ------> %s", c.LocalAddr().String(), c.RemoteAddr().String())
+//	_, err = c.Write([]byte("hello"))
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//	b := make([]byte, 8)
+//	n, rcvInfo, recvFlags, err1 := c.(*SCTPConn).ReadMsg(b)
+//	if err1 != nil {
+//		t.Fatal(err1)
+//	}
+//	if (recvFlags & SCTP_EOR) != SCTP_EOR {
+//		t.Fatal("expected whole message")
+//	}
+//	if !bytes.Equal(b[:n], []byte("hello")) {
+//		t.Fatal("expected equal 'hello', got: " + string(b[:n]))
+//	}
+//	if rcvInfo.Sid != 9 {
+//		t.Fatalf("expected sid 9, got: %d", rcvInfo.Sid)
+//	}
+//	if rcvInfo.Ppid != 0x01020304 {
+//		t.Fatalf("expected ppid 0x01020304, got: %d", rcvInfo.Ppid)
+//	}
+//
+//	c.Close()
+//	select {
+//	case <-closeChan:
+//	case err = <-errorChan:
+//		if err != io.EOF {
+//			t.Fatal(err)
+//		}
+//	}
+//}

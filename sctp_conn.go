@@ -244,6 +244,22 @@ func (c *SCTPConn) GetReadBuffer() (int, error) {
 	return sbSize, nil
 }
 
+// SetLinger sets the behavior of Close on a connection which still
+// has data waiting to be sent or to be acknowledged.
+//
+// If sec < 0 (the default), SCTP attempts to close the connection
+// gracefully by sending a SHUTDOWN message and finish
+// sending/acknowledging the data in the background.
+//
+// If sec == 0, SCTP discards any unsent or unacknowledged data and
+// sends an ABORT chunk.
+//
+// If sec > 0, the data is sent in the background as with sec < 0.
+// The Close() can be blocked for at most sec time. Note that the
+// time unit is in seconds, according to POSIX, but might be different
+// on specific platforms. If the graceful shutdown phase does not
+// finish during this period, Close() will return, but the graceful
+// shutdown phase will continue in the system.
 func (c *SCTPConn) SetLinger(sec int) error {
 	if !c.ok() {
 		return errEINVAL
