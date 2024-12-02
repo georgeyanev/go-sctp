@@ -271,6 +271,49 @@ func (c *SCTPConn) SetLinger(sec int) error {
 	return nil
 }
 
+// CloseRead Disables further receive operations.
+// No SCTP protocol action is taken.
+// Most callers should just use Close.
+//
+// After calling CloseWrite or CloseRead, Close should be
+// called to close the socket descriptor.
+func (c *SCTPConn) CloseRead() error {
+	if !c.ok() {
+		return errEINVAL
+	}
+	if err := c.fd.closeRead(); err != nil {
+		return &net.OpError{Op: "close", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return nil
+}
+
+// CloseWrite Disables further send operations, and initiates the SCTP
+// shutdown sequence.
+// Most callers should just use Close.
+//
+// The major difference between SCTP and TCP shutdown() is that SCTP
+// SHUT_WR (CloseWrite) initiates immediate and full protocol shutdown,
+// whereas TCP SHUT_WR causes TCP to go into the half close state.
+// SHUT_RD (CloseRead) behaves the same for SCTP as for TCP.
+// The purpose of SCTP SHUT_WR is to close the SCTP association while
+// still leaving the socket descriptor open. This allows the caller to
+// receive back any data that SCTP is unable to deliver and receive event
+// notifications.
+// After calling CloseWrite or CloseRead, Close should be
+// called to close the socket descriptor.
+//
+// To perform the ABORT operation, an application can use the SetLinger
+// function, or SCTP_ABORT flag in SndInfo struct.
+func (c *SCTPConn) CloseWrite() error {
+	if !c.ok() {
+		return errEINVAL
+	}
+	if err := c.fd.closeWrite(); err != nil {
+		return &net.OpError{Op: "close", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return nil
+}
+
 func newSCTPConnNew(fd *sctpFD) *SCTPConn {
 	_ = fd.setNoDelay(true)
 
