@@ -455,6 +455,31 @@ func (fd *sctpFD) close() error {
 	return fd.f.Close()
 }
 
+func (fd *sctpFD) shutdown(how int) error {
+	if !fd.initialized() {
+		return errEINVAL
+	}
+	var err error
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = unix.Shutdown(int(fd), how)
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("shutdown", err)
+	}
+	return nil
+}
+
+func (fd *sctpFD) closeRead() error {
+	return fd.shutdown(unix.SHUT_RD)
+}
+
+func (fd *sctpFD) closeWrite() error {
+	return fd.shutdown(unix.SHUT_WR)
+}
+
 func (fd *sctpFD) initialized() bool { return fd != nil && fd.f != nil && fd.rc != nil }
 
 func newFD(family int, network string) *sctpFD {
