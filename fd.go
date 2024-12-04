@@ -3,6 +3,7 @@ package sctp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"golang.org/x/sys/unix"
 	"io"
 	"log"
@@ -368,7 +369,11 @@ func (fd *sctpFD) retrieveRemoteAddr() (*SCTPAddr, error) {
 
 	const SCTP_GET_PEER_ADDRS int = 108
 	log.Printf("gId: %d, func rawGetRemoteAddr\n", getGoroutineID())
-	return fd.retrieveAddr(SCTP_GET_PEER_ADDRS)
+	a, err := fd.retrieveAddr(SCTP_GET_PEER_ADDRS)
+	if err != nil {
+		return getPeerAddr(fd)
+	}
+	return a, nil
 }
 
 func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
@@ -486,5 +491,30 @@ func newFD(family int, network string) *sctpFD {
 	return &sctpFD{
 		family: family,
 		net:    network,
+	}
+}
+
+// Uses getpeeraddr system call.
+// Effectively gets the primary remote peer address
+func getPeerAddr(fd *sctpFD) (*SCTPAddr, error) {
+	var err error
+	var sa unix.Sockaddr
+	doErr := fd.rc.Control(func(fd uintptr) {
+		sa, err = unix.Getpeername(int(fd))
+	})
+	if doErr != nil {
+		return nil, doErr
+	}
+	if err != nil {
+		return nil, os.NewSyscallError("getpeername", err)
+	}
+
+	switch a := sa.(type) {
+	case *unix.SockaddrInet4:
+		return &SCTPAddr{IPAddrs: []net.IPAddr{{IP: a.Addr[:]}}, Port: a.Port}, nil
+	case *unix.SockaddrInet6:
+		return &SCTPAddr{IPAddrs: []net.IPAddr{{IP: a.Addr[:], Zone: zoneCache.name(int(a.ZoneId))}}, Port: a.Port}, nil
+	default:
+		return nil, os.NewSyscallError("getpeername", fmt.Errorf("unsupported sockaddr type: %T", sa))
 	}
 }
