@@ -185,6 +185,63 @@ func (*AdaptationEvent) Type() EventType { return SCTP_ADAPTATION_INDICATION }
 // Flags is ignored for this event
 func (*AdaptationEvent) Flags() int { return 0 }
 
+type SendFailedEvent struct {
+	// One of the flags defined in SendFailedEvent flags
+	SfeFlags uint16
+
+	// This value represents the reason why the send failed,
+	// and if set, will be an SCTP protocol error code as defined in
+	// Section 3.3.10 of [RFC9260].
+	Error uint32
+
+	// This field includes the ancillary data (struct
+	// SndInfo) used to send the undelivered message.  Regardless of
+	// whether ancillary data is used or not, the SfeSndInfo.Flags
+	// field indicates whether the complete message or only part of the
+	// message is returned in Data.  If only part of the message is
+	// returned, it means that the part that is not present has been sent
+	// successfully to the peer.
+	//
+	// If the complete message cannot be sent, the SCTP_DATA_NOT_FRAG
+	// flag is set in SfeSndInfo.Flags.  If the first part of the
+	// message is sent successfully, SCTP_DATA_LAST_FRAG is set.  This
+	// means that the tail end of the message is returned in ssf_data.
+	SfeSndInfo SndInfo
+
+	// Association ID is ignored in one-to-one mode
+	AssocID int32
+
+	// The undelivered message or part of the undelivered
+	// message will be present in the ssf_data field. Note that the
+	// SfeSndInfo.Flags field as noted above should be used to
+	// determine whether a complete message or just a piece of the
+	// message is present.  Note that only user data is present in this
+	// field; any chunk headers or SCTP common headers must be removed by
+	// the SCTP stack.
+	Data []byte
+}
+
+// SendFailedEvent flags
+const (
+	// SCTP_DATA_UNSENT indicates that the data was never put on the wire
+	SCTP_DATA_UNSENT = 0
+
+	// SCTP_DATA_SENT indicates that the data was put on the wire.
+	// Note that this does not necessarily mean that the data
+	// was (or was not) successfully delivered.
+	SCTP_DATA_SENT = 1
+)
+
+// SfeSndInfo flags
+const (
+	SCTP_DATA_LAST_FRAG = 1
+	SCTP_DATA_NOT_FRAG  = 3
+)
+
+func (*SendFailedEvent) Type() EventType { return SCTP_SEND_FAILED_EVENT }
+
+func (sfe *SendFailedEvent) Flags() int { return int(sfe.SfeFlags) }
+
 type eventHeader struct {
 	snType   uint16
 	snFlags  uint16
@@ -222,7 +279,7 @@ func ParseEvent(b []byte) (Event, error) {
 	case SCTP_STREAM_CHANGE_EVENT:
 		return nil, errors.New("SCTP_STREAM_CHANGE_EVENT not implemented")
 	case SCTP_SEND_FAILED_EVENT:
-		return nil, errors.New("SCTP_SEND_FAILED_EVENT not implemented")
+		return parseSendFailedEvent(b)
 	default:
 		return nil, errors.New("unknown event type: " + strconv.Itoa(int(hdr.snType)))
 	}
@@ -332,5 +389,27 @@ func parseAdaptationEvent(b []byte) (Event, error) {
 	return &AdaptationEvent{
 		AdaptationInd: se.adaptationInd,
 		AssocID:       se.assocID,
+	}, nil
+}
+
+func parseSendFailedEvent(b []byte) (Event, error) {
+	type sendFailedEvent struct {
+		eventHeader
+		error      uint32
+		sfeSndInfo SndInfo
+		assocID    int32
+	}
+	if len(b) < int(unsafe.Sizeof(sendFailedEvent{})) {
+		return nil, errors.New("sendFailedEvent event too short")
+	}
+
+	sfe := (*sendFailedEvent)(unsafe.Pointer(&b[0]))
+	sizeOfSfe := unsafe.Sizeof(sendFailedEvent{})
+	return &SendFailedEvent{
+		SfeFlags:   sfe.snFlags,
+		Error:      sfe.error,
+		SfeSndInfo: sfe.sfeSndInfo,
+		AssocID:    sfe.assocID,
+		Data:       b[sizeOfSfe:],
 	}, nil
 }
