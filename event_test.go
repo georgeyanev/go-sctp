@@ -161,7 +161,7 @@ func TestAssocChangeEvent(t *testing.T) {
 // For this test to work, the kernel parameters `net.sctp.addip_enable`
 // and `net.sctp.addip_noauth_enable` must be set to 1.
 func TestPeerAddrChangeEvent(t *testing.T) {
-	t.Skip("Comment this to execute the test")
+	t.Skip("Comment this after setting appropriate kernel params to execute the test")
 	ln1, err := Listen("sctp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -668,6 +668,91 @@ func TestAdaptationEvent(t *testing.T) {
 	}
 
 	c.Close()
+	select {
+	case <-closeChan:
+	case err = <-errorChan:
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestSenderDryEvent(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	closeChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
+		c, err1 := ln1.Accept()
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		defer func(c net.Conn) {
+			c.Close()
+			close(closeChan)
+		}(c)
+
+		b := make([]byte, 256)
+
+		// read data
+		n, _, _, err1 := c.(*SCTPConn).ReadMsg(b)
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		if !bytes.Equal(b[:n], []byte("hello")) {
+			errorChan <- errors.New("expected equal 'hello', got: " + string(b[:n]))
+			return
+		}
+	}()
+
+	var d = Dialer{
+		LocalAddr: &SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IP{127, 0, 0, 1}}}},
+	}
+	c, err := d.Dial("sctp4", ln1.Addr().String())
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Dial: %s ------> %s", c.LocalAddr().String(), c.RemoteAddr().String())
+
+	_, err = c.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c1 := c.(*SCTPConn)
+	if err = c1.Subscribe(SCTP_SENDER_DRY_EVENT); err != nil {
+		t.Fatal(err)
+	}
+
+	b := make([]byte, 256)
+	n, _, recvFlags, err1 := c1.ReadMsg(b)
+	if err1 != nil {
+		t.Fatal(err)
+	}
+	log.Println("Reading event ... done")
+
+	if (recvFlags & SCTP_NOTIFICATION) != SCTP_NOTIFICATION {
+		t.Fatal(errors.New("expected SCTP_SENDER_DRY_EVENT event"))
+	}
+	if (recvFlags & SCTP_EOR) != SCTP_EOR {
+		t.Fatal(errors.New("expected whole message"))
+	}
+
+	e, err1 := ParseEvent(b[:n])
+	if err1 != nil {
+		t.Fatal(err)
+	}
+
+	_, ok := e.(*SenderDryEvent)
+	if !ok {
+		t.Fatal(errors.New("expected SenderDryEvent"))
+	}
+
+	c.Close() // sends SCTP_SHUTDOWN_EVENT
 	select {
 	case <-closeChan:
 	case err = <-errorChan:
