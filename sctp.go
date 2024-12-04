@@ -152,4 +152,3 @@ type RcvInfo struct {
 // TODO: Add test from conn_test.go
 // TODO: Add test from dial_unix_test.go
 // TODO: Test for timeouts with Accept (setReadDeadLine)
-// TODO: Set finalizer for sctpFD?
