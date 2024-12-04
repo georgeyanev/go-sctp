@@ -104,7 +104,7 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 //	n: number of bytes read and stored into b
 //	rcvInfo: information about the received message
 //	recvFlags: received message flags (i.e. SCTP_NOTIFICATION, SCTP_EOR)
-//	err : error
+//	err: error
 func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
 	if !c.ok() {
 		return 0, nil, 0, errEINVAL
@@ -116,13 +116,36 @@ func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, er
 	return n, rcvInfo, rcvFlags, err
 }
 
-//func (c *Conn) WriteMsgEor(b []byte, eor bool) (int, error) { return 0, nil }
-
+// WriteMsg is a simplified form of WriteMsgExt
 func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
+	return c.WriteMsgExt(b, info, nil, 0)
+}
+
+// WriteMsgExt is used to transmit the data passed in `b` to its peer.
+// Different types of ancillary data can be sent and received along
+// with user data.  When sending, the ancillary data is used to
+// specify the send behavior, such as the SCTP stream number to use
+// or the protocol payload identifier (Ppid). These are specified in
+// the SndInfo struct. SndInfo argument which is optional. If it is null
+// the data is sent on stream number 0.
+// If the caller wants to send the message to a specific peer address
+// (hence overriding the primary address), it can provide the specific
+// address in the `to` argument.
+//
+// This function call may also be used to terminate an association.  The
+// caller provides an SndInfo struct with the Flags field set to
+// SCTP_EOF.
+//
+// WriteMsg returns the number of bytes accepted by the kernel or an
+// error in case of any.
+//
+// If the caller finds the default behavior reasonable, the function
+// SCTPConn.Write can be used instead.
+func (c *SCTPConn) WriteMsgExt(b []byte, info *SndInfo, to *net.IPAddr, flags int) (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL
 	}
-	n, err := c.fd.writeMsg(b, info, nil, 0)
+	n, err := c.fd.writeMsg(b, info, to, flags)
 	if err != nil {
 		err = &net.OpError{Op: "writeMsg", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
