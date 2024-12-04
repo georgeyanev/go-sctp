@@ -248,6 +248,21 @@ type eventHeader struct {
 	snLength uint32
 }
 
+// SenderDryEvent is received to inform the application
+// that the stack has no more user data to send or retransmit.
+// Also, at the time when a user app subscribes to this event,
+// if there is no data to be sent or retransmit, the stack
+// will immediately send up this notification.
+type SenderDryEvent struct {
+	// Association ID is ignored in one-to-one mode
+	AssocID int32
+}
+
+func (*SenderDryEvent) Type() EventType { return SCTP_SENDER_DRY_EVENT }
+
+func (sfe *SenderDryEvent) Flags() int { return 0 }
+
+// ParseEvent parses an SCTP event from a byte slice
 func ParseEvent(b []byte) (Event, error) {
 	if len(b) < int(unsafe.Sizeof(eventHeader{})) {
 		return nil, errors.New("event too short")
@@ -271,7 +286,7 @@ func ParseEvent(b []byte) (Event, error) {
 	case SCTP_AUTHENTICATION_EVENT:
 		return nil, errors.New("SCTP_AUTHENTICATION_EVENT not implemented")
 	case SCTP_SENDER_DRY_EVENT:
-		return nil, errors.New("SCTP_SENDER_DRY_EVENT not implemented")
+		return parseSenderDryEvent(b)
 	case SCTP_STREAM_RESET_EVENT:
 		return nil, errors.New("SCTP_STREAM_RESET_EVENT not implemented")
 	case SCTP_ASSOC_RESET_EVENT:
@@ -411,5 +426,20 @@ func parseSendFailedEvent(b []byte) (Event, error) {
 		SfeSndInfo: sfe.sfeSndInfo,
 		AssocID:    sfe.assocID,
 		Data:       b[sizeOfSfe:],
+	}, nil
+}
+
+func parseSenderDryEvent(b []byte) (Event, error) {
+	type senderDryEvent struct {
+		eventHeader
+		assocID int32
+	}
+	if len(b) < int(unsafe.Sizeof(senderDryEvent{})) {
+		return nil, errors.New("senderDryEvent event too short")
+	}
+
+	se := (*senderDryEvent)(unsafe.Pointer(&b[0]))
+	return &SenderDryEvent{
+		AssocID: se.assocID,
 	}, nil
 }
