@@ -134,9 +134,6 @@ type RcvInfo struct {
 	AssocID int32
 }
 
-// TODO: Add Shutdown functions and test Shutdown event
-// this will involve implementing SCTP_SEND_FAILED_EVENT event, and get/set SO_LINGER option
-// TODO: Add WriteMsg function with 'to' and 'EOR' ability (for the eor too work an EOR socket option is needed)
 // TODO: In refreshRemoteAddr if getRemoteAddr fails, use GetPeerAddr
 // WriteMsg(byte, snd_info)
 // WriteMsgTo
