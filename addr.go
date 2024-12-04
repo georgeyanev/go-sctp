@@ -226,8 +226,7 @@ func fromSockaddrBuff(buf []byte, numAddrs int) (*SCTPAddr, error) {
 	switch rawSockaddrAny.Addr.Family {
 	case unix.AF_INET:
 		rsi4 := (*unix.RawSockaddrInet4)(up)
-		p := (*[2]byte)(unsafe.Pointer(&rsi4.Port))
-		sctpAddr.Port = int(p[0])<<8 + int(p[1]) // works regardless of the host system's endianness
+		sctpAddr.Port = int(Ntohui16(rsi4.Port))
 		for i := 0; i < numAddrs; i++ {
 			pp := (*unix.RawSockaddrInet4)(unsafe.Pointer(uintptr(up) + uintptr(i)*unix.SizeofSockaddrInet4))
 			sctpAddr.IPAddrs = append(sctpAddr.IPAddrs, net.IPAddr{IP: pp.Addr[:]})
@@ -235,8 +234,7 @@ func fromSockaddrBuff(buf []byte, numAddrs int) (*SCTPAddr, error) {
 
 	case unix.AF_INET6:
 		rsi6 := (*unix.RawSockaddrInet6)(up)
-		p := (*[2]byte)(unsafe.Pointer(&rsi6.Port))
-		sctpAddr.Port = int(p[0])<<8 + int(p[1])
+		sctpAddr.Port = int(Ntohui16(rsi6.Port))
 		for i := 0; i < numAddrs; i++ {
 			pp := (*unix.RawSockaddrInet6)(unsafe.Pointer(uintptr(up) + uintptr(i)*unix.SizeofSockaddrInet6))
 			sctpAddr.IPAddrs = append(sctpAddr.IPAddrs, net.IPAddr{IP: pp.Addr[:], Zone: zoneCache.name(int(pp.Scope_id))})

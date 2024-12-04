@@ -355,9 +355,7 @@ func sockaddrInet4ToBuf(sa4 syscall.SockaddrInet4) ([]byte, error) {
 	}
 	rawSa4 := syscall.RawSockaddrInet4{}
 	rawSa4.Family = syscall.AF_INET
-	p := (*[2]byte)(unsafe.Pointer(&rawSa4.Port))
-	p[0] = byte(sa4.Port >> 8) // works regardless of the host system's endianness
-	p[1] = byte(sa4.Port)
+	rawSa4.Port = Htonui16(uint16(sa4.Port))
 	rawSa4.Addr = sa4.Addr // bytes are copied
 	return unsafe.Slice((*byte)(unsafe.Pointer(&rawSa4)), syscall.SizeofSockaddrInet4), nil
 }
@@ -371,9 +369,7 @@ func sockaddrInet6ToBuf(sa6 syscall.SockaddrInet6) ([]byte, error) {
 	}
 	rawSa6 := syscall.RawSockaddrInet6{}
 	rawSa6.Family = syscall.AF_INET6
-	p := (*[2]byte)(unsafe.Pointer(&rawSa6.Port))
-	p[0] = byte(sa6.Port >> 8) // works regardless of the host system's endianness
-	p[1] = byte(sa6.Port)
+	rawSa6.Port = Htonui16(uint16(sa6.Port))
 	rawSa6.Scope_id = sa6.ZoneId
 	rawSa6.Addr = sa6.Addr // bytes are copied
 	return unsafe.Slice((*byte)(unsafe.Pointer(&rawSa6)), syscall.SizeofSockaddrInet6), nil
