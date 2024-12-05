@@ -45,7 +45,7 @@ func main() {
 
 			nn = 0
 			for {
-				n, _, err := c.(*sctp.SCTPConn).ReadMsg(b)
+				n, _, _, err := c.(*sctp.SCTPConn).ReadMsg(b)
 				//n, err := c.Read(b)
 				if err != nil && err != io.EOF {
 					log.Println(err)

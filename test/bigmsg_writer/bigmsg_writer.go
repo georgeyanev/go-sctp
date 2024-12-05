@@ -20,9 +20,6 @@ func main() {
 	}
 	defer c.Close()
 
-	x := 1024 * 1024 * 1024 * 5 // 5G
-	p := make([]byte, x)
-
 	wBuf, err := c.(*sctp.SCTPConn).GetWriteBuffer()
 	if err != nil {
 		log.Fatal(err)
@@ -34,7 +31,7 @@ func main() {
 	log.Printf("Read/Write buffer sizes: %d/%d", rBuf, wBuf)
 
 	start := time.Now()
-	_, err = writeAll(c, p)
+	_, err = writeAll(c)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -42,13 +39,43 @@ func main() {
 	log.Printf("Time elapsed: %.3f seconds\n", elapsed.Seconds())
 }
 
+// writes a 5G stream in portions of 1K so no big memory is reserved (as in writeAllBigBuffer)
+func writeAll(c net.Conn) (int, error) {
+	wBufSize := 1024
+	p := make([]byte, wBufSize)
+
+	cycles := 1024 * 1024 * 5 // 5G
+
+	var nn, lastReported int
+	for {
+		sndInfo := sctp.SndInfo{Sid: 1}
+		n, err := c.(*sctp.SCTPConn).WriteMsg(p, &sndInfo)
+		//n, err := c.Write(p)
+		if n > 0 {
+			nn += n
+		}
+		if nn == wBufSize*cycles {
+			return nn, err
+		}
+		if err != nil {
+			return nn, err
+		}
+		if (nn - lastReported) >= 1024*1024*100 { //10MB
+			log.Printf("%d bytes written", nn)
+			lastReported = nn
+		}
+	}
+}
+
 // Writes a big buffer (greater than a socket send buffer) to the conn object
 // splitting the buffer into smaller peaces and writing them one by one.
 // we cannot pass the large buffer to c.Write because it will not fit in the socket buffer
 // and the function will return EMSGSIZE.
 // See: https://datatracker.ietf.org/doc/html/rfc6458#page-67
+func writeAllBigBuffer(c net.Conn) (int, error) {
+	x := 1024 * 1024 * 1024 * 5 // 5G
+	p := make([]byte, x)
 
-func writeAll(c net.Conn, p []byte) (int, error) {
 	wBufSize := 1024
 
 	var nn, lastReported int

@@ -136,7 +136,7 @@ type RcvInfo struct {
 }
 
 // TODO: Add performance tests
-// TODO: Add heartbeat management
-// TODO: Get Assoc Status
-// TODO: Cookie
+// TODO: Add heartbeat management (SCTP_PEER_ADDR_PARAMS)
+// TODO: Get Assoc Status (SCTP_STATUS)
+// TODO: Cookie (SCTP_ASSOCINFO)
 // TODO: Add readme
