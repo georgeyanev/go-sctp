@@ -223,7 +223,7 @@ func TestDialerKeepAliveSCTP(t *testing.T) {
 	// TO DO: test SCTP hearth beat
 }
 
-func TestDialTimeout(t *testing.T) {
+func TestDialTimeoutSCTP(t *testing.T) {
 	blackholeIPPort := slowDst6 + ":1234"
 
 	d := &Dialer{Timeout: 150 * time.Millisecond}
