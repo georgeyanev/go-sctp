@@ -6,13 +6,14 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// flags set upon calling ReadMsg in recvFlags
 const (
-	SCTP_SACK_IMMEDIATELY = 8
-	SCTP_PR_SCTP_ALL      = 128
-	SCTP_NOTIFICATION     = 0x8000
-)
+	// SCTP_NOTIFICATION indicated that the received message is
+	// an SCTP event and not a data message
+	SCTP_NOTIFICATION = 0x8000
 
-const (
+	// SCTP_EOR indicates the end of a message (End Of Record).
+	// See ReadMsg for more details
 	SCTP_EOR = unix.MSG_EOR
 )
 
@@ -134,15 +135,6 @@ type RcvInfo struct {
 	AssocID int32
 }
 
-// TODO: In refreshRemoteAddr if getRemoteAddr fails, use GetPeerAddr
-// WriteMsg(byte, snd_info)
-// WriteMsgTo
-// WriteMsgEor
-// WriteMsgToEor
-// if other flags should be set? except EOR?
-// WriteMsgExt(buf, snd_info, to, flags)
-
-// TODO: Add test from net.net_test.go (regarding Closing, Close read, close write etc)
 // TODO: Add test from net.protoconn_test.go (regarding specific methods of Conn, SCTPConn etc)
 // TODO: Add test from timeout_test.go
 // TODO: Add test from write_unix_test.go
