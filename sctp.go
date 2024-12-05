@@ -135,7 +135,8 @@ type RcvInfo struct {
 	AssocID int32
 }
 
-// TODO: Add test from write_unix_test.go
-// TODO: Add test from conn_test.go
-// TODO: Add test from dial_unix_test.go
-// TODO: Test for timeouts with Accept (setReadDeadLine)
+// TODO: Add performance tests
+// TODO: Add heartbeat management
+// TODO: Get Assoc Status
+// TODO: Cookie
+// TODO: Add readme
