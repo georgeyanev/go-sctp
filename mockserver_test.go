@@ -508,7 +508,15 @@ second:
 	case *os.SyscallError:
 		nestedErr = err.Err
 		goto third
+	case *fs.PathError:
+		switch err.Err {
+		case os.ErrClosed, errTimeout, os.ErrDeadlineExceeded:
+			return nil
+		}
+		nestedErr = err.Err
+		goto third
 	}
+
 	switch nestedErr {
 	case net.ErrClosed, errTimeout, os.ErrDeadlineExceeded:
 		return nil
@@ -550,6 +558,13 @@ second:
 	case interface{ isAddrinfoErrno() }:
 		return nil
 	case *os.SyscallError:
+		nestedErr = err.Err
+		goto third
+	case *fs.PathError:
+		switch err.Err {
+		case os.ErrClosed, errTimeout, os.ErrDeadlineExceeded:
+			return nil
+		}
 		nestedErr = err.Err
 		goto third
 	}
@@ -659,6 +674,52 @@ second:
 	}
 	switch nestedErr {
 	case net.ErrClosed, errTimeout, os.ErrDeadlineExceeded:
+		return nil
+	}
+	return fmt.Errorf("unexpected type on 2nd nested level: %T", nestedErr)
+
+third:
+	if isPlatformError(nestedErr) {
+		return nil
+	}
+	return fmt.Errorf("unexpected type on 3rd nested level: %T", nestedErr)
+}
+
+// parseCommonError parses nestedErr and reports whether it is a valid
+// error value from miscellaneous functions.
+// It returns nil when nestedErr is valid.
+func parseCommonError(nestedErr error) error {
+	if nestedErr == nil {
+		return nil
+	}
+
+	switch err := nestedErr.(type) {
+	case *net.OpError:
+		if err := isValid(err); err != nil {
+			return err
+		}
+		nestedErr = err.Err
+		goto second
+	}
+	return fmt.Errorf("unexpected type on 1st nested level: %T", nestedErr)
+
+second:
+	if isPlatformError(nestedErr) {
+		return nil
+	}
+	switch err := nestedErr.(type) {
+	case *os.SyscallError:
+		nestedErr = err.Err
+		goto third
+	case *os.LinkError:
+		nestedErr = err.Err
+		goto third
+	case *fs.PathError:
+		nestedErr = err.Err
+		goto third
+	}
+	switch nestedErr {
+	case net.ErrClosed:
 		return nil
 	}
 	return fmt.Errorf("unexpected type on 2nd nested level: %T", nestedErr)
