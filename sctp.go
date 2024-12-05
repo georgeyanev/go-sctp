@@ -135,7 +135,6 @@ type RcvInfo struct {
 	AssocID int32
 }
 
-// TODO: Add test from net.protoconn_test.go (regarding specific methods of Conn, SCTPConn etc)
 // TODO: Add test from timeout_test.go
 // TODO: Add test from write_unix_test.go
 // TODO: Add test from conn_test.go
