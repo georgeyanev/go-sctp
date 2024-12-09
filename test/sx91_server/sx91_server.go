@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	_ "net/http/pprof"
+	"os"
 	"syscall"
 )
 
@@ -102,7 +103,7 @@ func reader(conn net.Conn, echoMode bool) {
 		if err != nil {
 			log.Printf("read error: %v (processed %d packets)", err, totalPackets)
 
-			if errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, io.EOF) {
+			if errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed) {
 				log.Printf("connection closed")
 				return
 			}
@@ -118,7 +119,7 @@ func reader(conn net.Conn, echoMode bool) {
 				wn, err := conn.Write(payload)
 				if err != nil {
 					log.Printf("write error: %v (processed %d packets)", err, totalPackets)
-					if errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) {
+					if errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, os.ErrClosed) {
 						return
 					}
 					return

@@ -8,7 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"syscall"
+	"os"
 	"time"
 )
 
@@ -113,7 +113,7 @@ func sender(conn net.Conn, msgs int, drainMode bool, done chan int) {
 			n, err := conn.Read(rdbuf[total:])
 
 			if err != nil {
-				if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+				if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed) {
 					log.Printf("connection closed")
 					return
 				}
@@ -150,7 +150,7 @@ func receiver(conn net.Conn, done chan int) {
 		n, err := conn.Read(rdbuf[total:])
 
 		if err != nil {
-			if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
+			if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed) {
 				log.Printf("connection closed")
 				return
 			}
