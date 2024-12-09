@@ -3,7 +3,6 @@ package sctp
 import (
 	"context"
 	"golang.org/x/sys/unix"
-	"log"
 	"net"
 	"os"
 	"syscall"
@@ -12,9 +11,6 @@ import (
 // serverSocket returns a listening sctpFD object that is ready for
 // asynchronous I/O using the network poller
 func serverSocket(network string, laddr *SCTPAddr, lc *ListenConfig) (fd *sctpFD, err error) {
-
-	log.Printf("gId: %d,func serverSocket", getGoroutineID())
-
 	family, ipv6only := favoriteAddrFamily(network, laddr, nil, "listen")
 	s, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
 	if err != nil {
@@ -37,9 +33,6 @@ func serverSocket(network string, laddr *SCTPAddr, lc *ListenConfig) (fd *sctpFD
 // serverSocket returns a listening sctpFD object that is ready for
 // asynchronous I/O using the network poller
 func clientSocket(ctx context.Context, network string, raddr *SCTPAddr, d *Dialer) (fd *sctpFD, err error) {
-
-	log.Printf("gId: %d, func clientSocket", getGoroutineID())
-
 	family, ipv6only := favoriteAddrFamily(network, d.LocalAddr, raddr, "dial")
 	s, err := sysSocket(family, unix.SOCK_STREAM, unix.IPPROTO_SCTP)
 	if err != nil {
@@ -68,14 +61,11 @@ func sysBindx(fd, family, bindMode int, laddr *SCTPAddr) error {
 }
 
 func sysListen(sysfd, backlog int) error {
-	log.Printf("gId: %d, func rawListen\n", getGoroutineID())
 	return os.NewSyscallError("listen", unix.Listen(sysfd, backlog))
 }
 
 func sysConnect(fd, family int, raddr *SCTPAddr) error {
 	const SCTP_SOCKOPT_CONNECTX = 110
-
-	log.Printf("gId: %d, func sysConnect", getGoroutineID())
 
 	// accommodate wildcard addresses to point to local system
 	var finalRaddr *SCTPAddr

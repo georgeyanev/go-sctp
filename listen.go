@@ -2,7 +2,6 @@ package sctp
 
 import (
 	"errors"
-	"log"
 	"net"
 	"syscall"
 	"time"
@@ -107,7 +106,6 @@ func (ln *SCTPListener) Accept() (net.Conn, error) {
 
 // AcceptSCTP accepts the next incoming call and returns the new connection.
 func (ln *SCTPListener) AcceptSCTP() (*SCTPConn, error) {
-	log.Printf("gId %d: func ln.AcceptSCTP", getGoroutineID()) // TODO: remove()
 	if !ln.ok() {
 		return nil, syscall.EINVAL
 	}
@@ -261,7 +259,6 @@ func (ln *SCTPListener) accept() (*SCTPConn, error) {
 	if !ln.ok() {
 		return nil, errEINVAL
 	}
-	log.Printf("gId %d: func ln.accept", getGoroutineID())
 	fd, err := ln.fd.accept()
 	if err != nil {
 		return nil, err

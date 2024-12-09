@@ -135,8 +135,6 @@ type RcvInfo struct {
 	AssocID int32
 }
 
-// TODO: Add performance tests
-// TODO: Remove debug logging
 // TODO: Add build tags and license info
 // TODO: Get Assoc Status (SCTP_STATUS)
 // TODO: Determine minimum go version supported

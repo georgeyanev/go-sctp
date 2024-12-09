@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"golang.org/x/sys/unix"
 	"io"
-	"log"
 	"net"
 	"os"
 	"sync/atomic"
@@ -106,7 +105,6 @@ func (fd *sctpFD) accept() (*sctpFD, error) {
 	doErr := fd.rc.Read(func(fd uintptr) bool {
 		for {
 			ns, _, errcall, err = accept(int(fd))
-			log.Printf("gId: %d, rawAccept returned %d", getGoroutineID(), err)
 			if err == nil {
 				return true
 			}
@@ -139,11 +137,6 @@ func (fd *sctpFD) accept() (*sctpFD, error) {
 		return nil, err
 	}
 
-	if _, err = syscall.Getpeername(ns); err != nil {
-		log.Printf("Getpeername from ACCEPT returned error: %v", err)
-	} else {
-		log.Printf("Getpeername from ACCEPT returned OK")
-	}
 	// set addresses
 	newSctpFD.refreshLocalAddr()
 	newSctpFD.refreshRemoteAddr()
@@ -152,8 +145,6 @@ func (fd *sctpFD) accept() (*sctpFD, error) {
 }
 
 func (fd *sctpFD) dial(ctx context.Context, sysfd int, raddr *SCTPAddr, d *Dialer) error {
-	log.Printf("gId: %d, func fd.dial", getGoroutineID())
-
 	ctrlCtxFn := d.ControlContext
 	if ctrlCtxFn == nil && d.Control != nil {
 		ctrlCtxFn = func(cxt context.Context, network, address string, c syscall.RawConn) error {
@@ -358,7 +349,6 @@ func (fd *sctpFD) retrieveLocalAddr() (*SCTPAddr, error) {
 	}
 
 	const SCTP_GET_LOCAL_ADDRS int = 109
-	log.Printf("gId: %d, func rawGetLocalAddr\n", getGoroutineID())
 	return fd.retrieveAddr(SCTP_GET_LOCAL_ADDRS)
 }
 
@@ -368,7 +358,6 @@ func (fd *sctpFD) retrieveRemoteAddr() (*SCTPAddr, error) {
 	}
 
 	const SCTP_GET_PEER_ADDRS int = 108
-	log.Printf("gId: %d, func rawGetRemoteAddr\n", getGoroutineID())
 	a, err := fd.retrieveAddr(SCTP_GET_PEER_ADDRS)
 	if err != nil {
 		return getPeerAddr(fd)
@@ -383,8 +372,6 @@ func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
 
 	// SCTP_ADDRS_BUF_SIZE is the allocated buffer for system calls returning local/remote sctp multi-homed addresses
 	const SCTP_ADDRS_BUF_SIZE int = 4096 //enough for most cases
-
-	log.Printf("gId: %d,func rawGetAddrs\n", getGoroutineID())
 
 	type rawSctpAddrs struct {
 		assocId int32
@@ -402,8 +389,6 @@ func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
 		return nil, doErr
 	}
 	if err != nil {
-		log.Printf("gId: %d, getsockopt error: %v, optName: %v, rawParamBuf: %v ", getGoroutineID(), err, optName, rawParamBuf)
-		//debug.PrintStack()
 		return nil, os.NewSyscallError("getsockopt", err)
 	}
 

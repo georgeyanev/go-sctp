@@ -90,10 +90,8 @@ func (ls *localServerSCTP) teardown() error {
 	ls.lnmu.Lock()
 	defer ls.lnmu.Unlock()
 	if ls.Listener != nil {
-		log.Printf("gID: %d, closing listener... ", getGoroutineID())
 		ls.Listener.Close()
 		for _, c := range ls.cl {
-			log.Printf("gID: %d, closing accepted connection... ", getGoroutineID())
 			if err := c.Close(); err != nil {
 				return err
 			}
@@ -106,12 +104,10 @@ func (ls *localServerSCTP) teardown() error {
 
 func (ls *localServerSCTP) transponder(ln net.Listener, ch chan<- error) {
 	defer close(ch)
-	log.Printf("gID: %d, in transponder... ", getGoroutineID())
 	switch ln := ln.(type) {
 	case *SCTPListener:
 		ln.SetDeadline(time.Now().Add(someTimeout))
 	}
-	log.Printf("gID: %d, transponder about to accept", getGoroutineID())
 	c, err := ln.Accept()
 	if err != nil {
 		if perr := parseAcceptError(err); perr != nil {
@@ -120,7 +116,7 @@ func (ls *localServerSCTP) transponder(ln net.Listener, ch chan<- error) {
 		ch <- err
 		return
 	}
-	log.Printf("gID: %d, transponder accepted connection: %v <-------> %v ", getGoroutineID(), c.LocalAddr(), c.RemoteAddr())
+	log.Printf("transponder accepted connection: %v <-------> %v ", c.LocalAddr(), c.RemoteAddr())
 	ls.cl = append(ls.cl, c)
 
 	network := ln.Addr().Network()
@@ -133,7 +129,6 @@ func (ls *localServerSCTP) transponder(ln net.Listener, ch chan<- error) {
 	c.SetWriteDeadline(time.Now().Add(someTimeout))
 
 	b := make([]byte, 256)
-	log.Printf("gID: %d, transponder about to read", getGoroutineID())
 	n, err := c.Read(b)
 	if err != nil {
 		if perr := parseReadError(err); perr != nil {
@@ -142,10 +137,8 @@ func (ls *localServerSCTP) transponder(ln net.Listener, ch chan<- error) {
 		ch <- err
 		return
 	}
-	log.Printf("gID: %d, transponder read %d bytes data: %v", getGoroutineID(), n, string(b[:n]))
 
-	log.Printf("gID: %d, transponder about to write %d bytes data: %v", getGoroutineID(), n, string(b[:n]))
-	nw, err := c.Write(b[:n])
+	_, err = c.Write(b[:n])
 	if err != nil {
 		if perr := parseWriteError(err); perr != nil {
 			ch <- perr
@@ -153,18 +146,15 @@ func (ls *localServerSCTP) transponder(ln net.Listener, ch chan<- error) {
 		ch <- err
 		return
 	}
-	log.Printf("gID: %d, transponder wrote %d bytes", getGoroutineID(), nw)
 }
 
 func transceiver(c net.Conn, wb []byte, ch chan<- error) {
 	defer close(ch)
-	log.Printf("gID: %d, in transceiver... ", getGoroutineID())
 
 	c.SetDeadline(time.Now().Add(someTimeout))
 	c.SetReadDeadline(time.Now().Add(someTimeout))
 	c.SetWriteDeadline(time.Now().Add(someTimeout))
 
-	log.Printf("gID: %d, transceiver about to write %d bytes data: %v", getGoroutineID(), len(wb), string(wb))
 	n, err := c.Write(wb)
 	if err != nil {
 		if perr := parseWriteError(err); perr != nil {
@@ -173,12 +163,10 @@ func transceiver(c net.Conn, wb []byte, ch chan<- error) {
 		ch <- err
 		return
 	}
-	log.Printf("gID: %d, transceiver wrote %d bytes", getGoroutineID(), n)
 	if n != len(wb) {
 		ch <- fmt.Errorf("wrote %d; want %d", n, len(wb))
 	}
 	rb := make([]byte, len(wb))
-	log.Printf("gID: %d, transceiver about to read", getGoroutineID())
 	n, err = c.Read(rb)
 	if err != nil {
 		if perr := parseReadError(err); perr != nil {
@@ -187,7 +175,6 @@ func transceiver(c net.Conn, wb []byte, ch chan<- error) {
 		ch <- err
 		return
 	}
-	log.Printf("gID: %d, transceiver read %d bytes data: %v", getGoroutineID(), n, string(rb))
 	if n != len(wb) {
 		ch <- fmt.Errorf("read %d; want %d", n, len(wb))
 	}
@@ -246,10 +233,6 @@ type streamListener struct {
 
 func (sl *streamListener) newLocalServerSCTP() *localServerSCTP {
 	return &localServerSCTP{Listener: sl.Listener, done: make(chan bool)}
-}
-
-func (sl *streamListener) newLocalServer() *localServer {
-	return &localServer{Listener: sl.Listener, done: make(chan bool)}
 }
 
 type dualStackServer struct {

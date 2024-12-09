@@ -69,7 +69,7 @@ func TestSCTPServer(t *testing.T) {
 				}
 				t.Fatal(err)
 			}
-			log.Printf("gID: %d, listening on %v", getGoroutineID(), ln.Addr())
+			log.Printf("listening on %v", ln.Addr())
 
 			var lss []*localServerSCTP
 			var tpchs []chan error
@@ -98,7 +98,6 @@ func TestSCTPServer(t *testing.T) {
 					t.Fatal(err)
 				}
 				d := Dialer{Timeout: someTimeout}
-				log.Printf("gID: %d, about to dial %s", getGoroutineID(), tt.taddr+":"+port)
 				c, err := d.Dial(tt.tnet, tt.taddr+":"+port)
 				if err != nil {
 					if perr := parseDialError(err); perr != nil {
@@ -106,10 +105,9 @@ func TestSCTPServer(t *testing.T) {
 					}
 					t.Fatal(err)
 				}
-				log.Printf("gID: %d, dialed connection: %v <-------> %v ", getGoroutineID(), c.LocalAddr(), c.RemoteAddr())
+				log.Printf("dialed connection: %v <-------> %v ", c.LocalAddr(), c.RemoteAddr())
 
 				defer func(c net.Conn) {
-					log.Printf("gID: %d, closing dialed connection... ", getGoroutineID())
 					_ = c.Close()
 				}(c)
 				trchs = append(trchs, make(chan error, 1))

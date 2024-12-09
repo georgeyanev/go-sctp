@@ -2,10 +2,8 @@ package sctp
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
-	"runtime"
 	"unsafe"
 )
 
@@ -374,14 +372,4 @@ func Htonui16(i uint16) uint16 {
 func Ntohui16(i uint16) uint16 {
 	p := (*[2]byte)(unsafe.Pointer(&i))
 	return uint16(p[0])<<8 + uint16(p[1])
-}
-
-func getGoroutineID() uint64 {
-	buf := make([]byte, 64)
-	n := runtime.Stack(buf, false)
-	buf = buf[:n]
-	// The format will look like "goroutine 1234 [running]:"
-	var id uint64
-	fmt.Sscanf(string(buf), "goroutine %d ", &id)
-	return id
 }

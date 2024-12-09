@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"runtime"
 	"testing"
@@ -59,13 +58,11 @@ func TestCloseWriteSCTP(t *testing.T) {
 	}
 
 	handler := func(ls *localServerSCTP, ln net.Listener) {
-		log.Printf("accepting connection...")
 		c, err := ln.Accept()
 		if err != nil {
 			t.Error(err)
 			return
 		}
-		log.Printf("accepted connection...")
 
 		if !deadline.IsZero() {
 			c.SetDeadline(deadline)
@@ -73,13 +70,11 @@ func TestCloseWriteSCTP(t *testing.T) {
 		defer c.Close()
 
 		var b [1]byte
-		log.Printf("accepted connection about to read...")
 		n, err := c.Read(b[:])
 		if n != 0 || err != io.EOF {
 			t.Errorf("got (%d, %v); want (0, io.EOF)", n, err)
 			return
 		}
-		log.Printf("accepted connection read successful")
 		if err == nil {
 			t.Errorf("got (%d, %v); want (any, error)", n, err)
 			return
@@ -92,12 +87,10 @@ func TestCloseWriteSCTP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	log.Printf("About to Dial...")
 	c, err := Dial(ls.Listener.Addr().Network(), ls.Listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf("Dial successful")
 
 	if !deadline.IsZero() {
 		c.SetDeadline(deadline)

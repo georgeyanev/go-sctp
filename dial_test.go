@@ -162,11 +162,9 @@ func TestDialerLocalAddrSCTP(t *testing.T) {
 		for {
 			c, err := ln.Accept()
 			if err != nil {
-				log.Printf("gId: %d, Accept error: %v", getGoroutineID(), err)
+				log.Printf("Accept error: %v", err)
 				return
 			}
-			log.Printf("gId: %d, Close after accept: %v <----------> %v", getGoroutineID(), c.LocalAddr(), c.RemoteAddr())
-			//ls.cl = append(ls.cl, c)
 			c.Close()
 		}
 	}
@@ -199,7 +197,6 @@ func TestDialerLocalAddrSCTP(t *testing.T) {
 		if ip.family() == unix.AF_INET6 {
 			addr = lss[1].Listener.Addr().String()
 		}
-		log.Printf("gId: %d, About to dial\n", getGoroutineID())
 		c, err := d.Dial(tt.network, addr)
 		if err == nil && tt.error != nil || err != nil && tt.error == nil {
 			t.Errorf("%s %v->%s: got %v; want %v", tt.network, tt.laddr, tt.raddr, err, tt.error)
@@ -210,7 +207,6 @@ func TestDialerLocalAddrSCTP(t *testing.T) {
 			}
 			continue
 		}
-		log.Printf("gId: %d, Close after dial: %v <----------> %v", getGoroutineID(), c.LocalAddr(), c.RemoteAddr())
 		c.Close()
 	}
 }
@@ -355,7 +351,6 @@ func TestCancelAfterDialSCTP(t *testing.T) {
 	wg.Add(1)
 	defer func() {
 		ln.Close()
-		log.Println("in defer func, wait for wg...")
 		wg.Wait()
 	}()
 
@@ -368,18 +363,15 @@ func TestCancelAfterDialSCTP(t *testing.T) {
 			}
 			log.Printf("connection ACCEPTED: %v <----------> %v", c.LocalAddr(), c.RemoteAddr())
 			rb := bufio.NewReader(c)
-			log.Printf("reading from accepted connection...")
 			line, err := rb.ReadString('\n')
 			if err != nil {
 				t.Error(err)
 				c.Close()
 				continue
 			}
-			log.Printf("reading from accepted connection done, now writing back...")
 			if _, err := c.Write([]byte(line)); err != nil {
 				t.Error(err)
 			}
-			log.Printf("gId: %d, CLOSING accepted connection", getGoroutineID())
 			c.Close()
 		}
 		wg.Done()
@@ -402,7 +394,6 @@ func TestCancelAfterDialSCTP(t *testing.T) {
 		}
 		log.Printf("connection dialed: %v <----------> %v", c.LocalAddr(), c.RemoteAddr())
 		defer func(c net.Conn) {
-			log.Printf("gId: %d, CLOSING dialed connection in defer", getGoroutineID())
 			_ = c.Close()
 		}(c)
 
@@ -429,7 +420,6 @@ func TestCancelAfterDialSCTP(t *testing.T) {
 
 	// This bug manifested about 50% of the time, so try it a few times.
 	for i := 0; i < 10; i++ {
-		log.Printf("NEXT TRY")
 		try()
 	}
 }

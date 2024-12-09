@@ -2,7 +2,6 @@ package sctp
 
 import (
 	"context"
-	"log"
 	"net"
 	"syscall"
 	"time"
@@ -123,10 +122,8 @@ func (d *Dialer) Dial(network, address string) (net.Conn, error) {
 // connection.
 
 func (d *Dialer) DialContext(ctx context.Context, network string, address string) (net.Conn, error) {
-	log.Printf("gId: %d, func Dial", getGoroutineID())
 	// resolve with no context
 	raddr, err := resolveSCTPAddr("dial", network, address, d.LocalAddr)
-	log.Printf("gId: %d, raddr: %v", getGoroutineID(), raddr)
 	if err != nil {
 		return nil, &net.OpError{Op: "dial", Net: network, Source: nil, Addr: nil, Err: err}
 	}
@@ -139,7 +136,6 @@ func (d *Dialer) DialSCTP(network string, raddr *SCTPAddr) (*SCTPConn, error) {
 
 // DialSCTPContext acts like [DialContext] taking SCTP addresses and returning a SCTPConn.
 func (d *Dialer) DialSCTPContext(ctx context.Context, network string, raddr *SCTPAddr) (*SCTPConn, error) {
-	log.Printf("gId: %d, func d.DialSCTPContext", getGoroutineID())
 	if ctx == nil {
 		panic("nil context")
 	}
@@ -175,7 +171,6 @@ func (d *Dialer) DialSCTPContext(ctx context.Context, network string, raddr *SCT
 }
 
 func dialSCTP(ctx context.Context, network string, raddr *SCTPAddr, d *Dialer) (*SCTPConn, error) {
-	log.Printf("gId: %d, func dialSCTP", getGoroutineID())
 	fd, err := clientSocket(ctx, network, raddr, d)
 	if err != nil {
 		return nil, &net.OpError{Op: "dial", Net: network, Source: d.LocalAddr.opAddr(), Addr: raddr.opAddr(), Err: err}

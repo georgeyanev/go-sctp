@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"golang.org/x/sys/unix"
-	"log"
 	"net"
 	"os"
 	"runtime"
@@ -879,7 +878,6 @@ func (fd *sctpFD) connect(ctx context.Context, s int, raddr *SCTPAddr) (ret erro
 				return
 			case <-time.After(time.Duration(waitTimeMillis) * time.Millisecond):
 				// workaround for https://github.com/golang/go/issues/70373
-				log.Printf("TIMER INFLICTED WAKEUP...")
 				waitTimeMillis *= 10
 				// Force the runtime's poller to immediately give up
 				// waiting for writability, unblocking waitWrite below.
@@ -914,7 +912,6 @@ func (fd *sctpFD) connect(ctx context.Context, s int, raddr *SCTPAddr) (ret erro
 			}
 			// here if the error is timeout then this is caused by our wakeup timer (workaround for issue #70373)
 			// in that case we just skip to SO_ERROR checking
-			log.Printf("rc.Write returned error: %T, %v, isTimeout: %v", doErr, doErr, errors.Is(doErr, os.ErrDeadlineExceeded))
 			if !errors.Is(doErr, os.ErrDeadlineExceeded) {
 				fd.close()
 				return doErr
@@ -924,7 +921,6 @@ func (fd *sctpFD) connect(ctx context.Context, s int, raddr *SCTPAddr) (ret erro
 		err = fd.f.SetWriteDeadline(noDeadline) // restore the writeDeadline
 		if err != nil {
 			fd.close()
-			log.Printf("4 f.SetWriteDeadline returned error: %v", err)
 			return err
 		}
 
@@ -940,10 +936,8 @@ func (fd *sctpFD) connect(ctx context.Context, s int, raddr *SCTPAddr) (ret erro
 		nerr, err = unix.GetsockoptInt(s, unix.SOL_SOCKET, unix.SO_ERROR)
 		if err != nil {
 			fd.close()
-			log.Printf("5 syscall.GetsockoptInt returned error: %v", err)
 			return os.NewSyscallError("getsockopt", err)
 		}
-		log.Printf("SO_ERROR syscall.Errno is %d", nerr)
 
 		switch err = unix.Errno(nerr); err {
 		case unix.EINPROGRESS, unix.EALREADY, unix.EINTR:
@@ -953,17 +947,12 @@ func (fd *sctpFD) connect(ctx context.Context, s int, raddr *SCTPAddr) (ret erro
 			// The runtime poller can wake us up spuriously;
 			// see issues 14548 and 19289. Check that we are
 			// really connected; if not, wait again.
-
-			log.Printf("syscall.Errno is 0, calling rawGetpeername")
 			if _, err = syscall.Getpeername(s); err == nil {
 				return nil
-			} else {
-				log.Printf("Getpeername returned error: %v", err)
 			}
 
 		default:
 			fd.close()
-			log.Printf("SO_ERROR: %d, %v", err.(syscall.Errno), err)
 			return os.NewSyscallError("connect", err)
 		}
 		runtime.KeepAlive(fd.f)

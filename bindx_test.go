@@ -1,7 +1,6 @@
 package sctp
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -11,7 +10,6 @@ func TestListenerBindAddRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("ln1 address before: ", ln1.Addr())
 	ln1SCTP := ln1.(*SCTPListener)
 	err = ln1SCTP.BindRemove("127.0.0.2/127.0.0.1")
 	if err != nil {
@@ -21,7 +19,6 @@ func TestListenerBindAddRemove(t *testing.T) {
 		strings.Contains(ln1.Addr().String(), "127.0.0.2") {
 		t.Fatal(err)
 	}
-	fmt.Println("ln1 address after: ", ln1.Addr())
 	err = ln1SCTP.BindAdd("127.0.0.2/127.0.0.1")
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +27,6 @@ func TestListenerBindAddRemove(t *testing.T) {
 		!strings.Contains(ln1.Addr().String(), "127.0.0.2") {
 		t.Fatal(err)
 	}
-	fmt.Println("ln1 address after: ", ln1.Addr())
 	_ = ln1.Close()
 
 	//
@@ -38,7 +34,6 @@ func TestListenerBindAddRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("ln1 address before: ", ln1.Addr())
 	ln1SCTP = ln1.(*SCTPListener)
 	err = ln1SCTP.BindRemove("[::1]/127.0.0.2/127.0.0.1")
 	if err != nil {
@@ -49,7 +44,6 @@ func TestListenerBindAddRemove(t *testing.T) {
 		strings.Contains(ln1.Addr().String(), "::1") {
 		t.Fatal(err)
 	}
-	fmt.Println("ln1 address after: ", ln1.Addr())
 
 	err = ln1SCTP.BindAdd("[::1]/127.0.0.2/127.0.0.1")
 	if err != nil {
@@ -60,6 +54,5 @@ func TestListenerBindAddRemove(t *testing.T) {
 		!strings.Contains(ln1.Addr().String(), "::1") {
 		t.Fatal(err)
 	}
-	fmt.Println("ln1 address after: ", ln1.Addr())
 	_ = ln1.Close()
 }
