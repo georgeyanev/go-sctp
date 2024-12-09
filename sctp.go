@@ -136,7 +136,12 @@ type RcvInfo struct {
 }
 
 // TODO: Add performance tests
-// TODO: Add heartbeat management (SCTP_PEER_ADDR_PARAMS)
+// TODO: Remove debug logging
+// TODO: Add build tags and license info
 // TODO: Get Assoc Status (SCTP_STATUS)
-// TODO: Cookie (SCTP_ASSOCINFO)
+// TODO: Determine minimum go version supported
 // TODO: Add readme
+// TODO: Test on different architectures
+// TODO: Add heartbeat management (SCTP_PEER_ADDR_PARAMS)
+// TODO: Cookie (SCTP_ASSOCINFO)
+// TODO: Auth and SPA (WriteMsgSpa, WriteMsgSpaExt, Read equivalents)
