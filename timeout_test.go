@@ -4,6 +4,8 @@
 
 // This file contains test code from go's net package, tweaked for SCTP where necessary.
 
+//go:build linux
+
 package sctp
 
 import (
