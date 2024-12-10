@@ -185,6 +185,8 @@ func (c *SCTPConn) Unsubscribe(event ...EventType) error {
 	return nil
 }
 
+// RefreshRemoteAddr is called to refresh potentially changed remote peer address.
+// I.e. after receiving an SCTP_PEER_ADDR_CHANGE event
 func (c *SCTPConn) RefreshRemoteAddr() (*SCTPAddr, error) {
 	if !c.ok() {
 		return nil, errEINVAL
@@ -249,6 +251,7 @@ func (c *SCTPConn) GetDisableFragments() (bool, error) {
 	return b, nil
 }
 
+// GetWriteBuffer returns the current socket's  write buffer size in bytes.
 func (c *SCTPConn) GetWriteBuffer() (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL
@@ -260,6 +263,7 @@ func (c *SCTPConn) GetWriteBuffer() (int, error) {
 	return sbSize, nil
 }
 
+// GetReadBuffer returns the current socket's read buffer size in bytes.
 func (c *SCTPConn) GetReadBuffer() (int, error) {
 	if !c.ok() {
 		return 0, errEINVAL
@@ -341,10 +345,9 @@ func (c *SCTPConn) CloseWrite() error {
 	return nil
 }
 
-func newSCTPConnNew(fd *sctpFD) *SCTPConn {
+func newSCTPConn(fd *sctpFD) *SCTPConn {
 	_ = fd.setNoDelay(true)
-
-	// TO DO: set heartbeat disable here or heartbeat interval
+	// TODO: manage heartbeat here
 	return &SCTPConn{conn{fd: fd}}
 }
 

@@ -46,6 +46,10 @@ type InitOptions struct {
 	// specified in the AdaptationIndication field.
 	AdaptationIndicationEnabled bool
 	AdaptationIndication        uint32
+
+	// SCTP heartbeats are enabled by default and the interval between them are defined
+	// in `net.sctp.hb_interval` kernel parameter which is 30 seconds by default.
+	// TODO: add options for disable and change interval between heartbeats
 }
 
 // SndInfo structure specifies SCTP options for sending SCTP messages
@@ -139,8 +143,8 @@ type RcvInfo struct {
 	AssocID int32
 }
 
-// TODO: Determine minimum go version supported
 // TODO: Add readme
+// TODO: Test partial read
 // TODO: Get Assoc Status (SCTP_STATUS)
 // TODO: Test on different architectures
 // TODO: Add heartbeat management (SCTP_PEER_ADDR_PARAMS)

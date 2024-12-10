@@ -28,7 +28,7 @@ type sctpFD struct {
 	f  *os.File        // only trough os.File we can take advantage of the runtime network poller
 	rc syscall.RawConn // rc is used for specific SCTP socket ops; derived from fd
 
-	// mutable (by BindAdd and BindRemove); atomic access
+	// mutable (BindAdd and BindRemove); atomic access
 	laddr atomic.Pointer[SCTPAddr]
 	raddr atomic.Pointer[SCTPAddr]
 
@@ -353,7 +353,6 @@ func (fd *sctpFD) retrieveLocalAddr() (*SCTPAddr, error) {
 	if !fd.initialized() {
 		return nil, errEINVAL
 	}
-
 	const SCTP_GET_LOCAL_ADDRS int = 109
 	return fd.retrieveAddr(SCTP_GET_LOCAL_ADDRS)
 }
@@ -362,7 +361,6 @@ func (fd *sctpFD) retrieveRemoteAddr() (*SCTPAddr, error) {
 	if !fd.initialized() {
 		return nil, errEINVAL
 	}
-
 	const SCTP_GET_PEER_ADDRS int = 108
 	a, err := fd.retrieveAddr(SCTP_GET_PEER_ADDRS)
 	if err != nil {

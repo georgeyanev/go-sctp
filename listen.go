@@ -19,7 +19,6 @@ type SCTPListener struct {
 }
 
 // ListenConfig contains options for listening to an address.
-// ListenConfig TO DO: possibly add more fields (specific to SCTP)
 type ListenConfig struct {
 	// If Control is not nil, it is called after creating the network
 	// connection but before binding it to the operating system.
@@ -31,11 +30,6 @@ type ListenConfig struct {
 
 	// provides information for initializing new SCTP associations
 	InitOptions InitOptions
-
-	// SCTP heartbeats are enabled by default and the interval between them are defined
-	// in `net.sctp.hb_interval` kernel parameter which is 30 seconds by default.
-	// TO DO: make an option to disable them? Disabling means disable only sending heartbeats
-
 }
 
 // Listen announces on the local network address.
@@ -60,7 +54,7 @@ type ListenConfig struct {
 // For an extensive list of possibilities consult listen_test.go
 //
 // Listen uses context.Background internally; to specify the context, use
-// [ListenConfig.Listen].
+// ListenConfig.Listen.
 func Listen(network, address string) (net.Listener, error) {
 	var lc ListenConfig
 	return lc.Listen(network, address)
@@ -122,6 +116,9 @@ func (ln *SCTPListener) AcceptSCTP() (*SCTPConn, error) {
 	return c, nil
 }
 
+// Addr returns the listener's network address, a [*SCTPAddr].
+// The Addr returned is shared by all invocations of Addr, so
+// do not modify it.
 func (ln *SCTPListener) Addr() net.Addr {
 	if !ln.ok() {
 		return nil
@@ -129,6 +126,8 @@ func (ln *SCTPListener) Addr() net.Addr {
 	return ln.fd.laddr.Load()
 }
 
+// Close stops listening on the SCTP address.
+// Already Accepted connections are not closed.
 func (ln *SCTPListener) Close() error {
 	if !ln.ok() {
 		return errEINVAL
@@ -269,5 +268,5 @@ func (ln *SCTPListener) accept() (*SCTPConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newSCTPConnNew(fd), nil
+	return newSCTPConn(fd), nil
 }

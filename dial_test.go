@@ -70,11 +70,7 @@ func TestDialLocalSCTP(t *testing.T) {
 	c.Close()
 }
 
-func TestDialerDualStackFDLeakSCTP(t *testing.T) {
-	t.Skip("Do we need to test for FD leakage? besides package socktest is internal and not accessible")
-}
-
-// Define a pair of blackholed (IPv4, IPv6) addresses, for which dialTCP is
+// Define a pair of black-holed (IPv4, IPv6) addresses, for which dialTCP is
 // expected to hang until the timeout elapses. These addresses are reserved
 // for benchmarking by RFC 6890.
 const (
@@ -217,8 +213,9 @@ func TestDialerDualStackSCTP(t *testing.T) {
 	t.Skip("We don't resolve host names to multiple IP addresses, only to one of them")
 }
 
+// TODO: Revisit when managing heartbeat is implemented
 func TestDialerKeepAliveSCTP(t *testing.T) {
-	// TO DO: test SCTP hearth beat
+	t.Skip("Revisit when managing heartbeat is implemented")
 }
 
 func TestDialTimeoutSCTP(t *testing.T) {

@@ -51,7 +51,7 @@ func (a *SCTPAddr) String() string {
 }
 
 // Wildcard addresses cannot be used in combination with non-wildcard addresses.
-// A single address may be specified as a wildcard address.
+// A single net.IPAddr address may be specified as a wildcard address.
 func (a *SCTPAddr) isWildcard() bool {
 	if a.isEmpty() {
 		return true
@@ -154,7 +154,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 }
 
 // ResolveSCTPAddr returns an address of an SCTP end point.
-// The network must be a SCTP network name.
+// The network must be an SCTP network name.
 // See func [Dial] for a description of the network and address parameters.
 func ResolveSCTPAddr(network, addr string) (*SCTPAddr, error) {
 	return resolveSCTPAddr("resolve", network, addr, nil)
