@@ -8,6 +8,7 @@ package sctp
 
 import (
 	"errors"
+	"golang.org/x/sys/unix"
 	"net"
 	"syscall"
 	"time"
@@ -130,7 +131,7 @@ func (ln *SCTPListener) Addr() net.Addr {
 // Already Accepted connections are not closed.
 func (ln *SCTPListener) Close() error {
 	if !ln.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := ln.close(); err != nil {
 		return &net.OpError{Op: "close", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load().opAddr(), Err: err}
@@ -142,7 +143,7 @@ func (ln *SCTPListener) Close() error {
 // A zero time value disables the deadline.
 func (ln *SCTPListener) SetDeadline(t time.Time) error {
 	if !ln.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	return ln.fd.f.SetDeadline(t)
 }
@@ -159,7 +160,7 @@ func (ln *SCTPListener) SetDeadline(t time.Time) error {
 // `net.sctp.addip_noauth_enable` kernel parameters.
 func (ln *SCTPListener) BindAdd(address string) error {
 	if !ln.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	laddr, err := resolveSCTPAddr("bindx", ln.fd.net, address, nil)
 	if err != nil {
@@ -175,7 +176,7 @@ func (ln *SCTPListener) BindAdd(address string) error {
 
 func (ln *SCTPListener) BindAddSCTP(laddr *SCTPAddr) error {
 	if !ln.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := ln.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_ADD); err != nil {
 		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
@@ -195,7 +196,7 @@ func (ln *SCTPListener) BindAddSCTP(laddr *SCTPAddr) error {
 // `net.sctp.addip_noauth_enable` kernel parameters.
 func (ln *SCTPListener) BindRemove(address string) error {
 	if !ln.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	laddr, err := resolveSCTPAddr("bindx", ln.fd.net, address, nil)
 	if err != nil {
@@ -212,7 +213,7 @@ func (ln *SCTPListener) BindRemove(address string) error {
 
 func (ln *SCTPListener) BindRemoveSCTP(laddr *SCTPAddr) error {
 	if !ln.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := ln.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_REM); err != nil {
 		return &net.OpError{Op: "bindx", Net: ln.fd.net, Source: nil, Addr: ln.fd.laddr.Load(),
@@ -228,7 +229,7 @@ func (ln *SCTPListener) BindRemoveSCTP(laddr *SCTPAddr) error {
 // The subscription is transferred to the new accepted connections.
 func (ln *SCTPListener) Subscribe(event ...EventType) error {
 	if !ln.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	for _, e := range event {
 		if err := ln.fd.subscribe(e, true); err != nil {
@@ -241,7 +242,7 @@ func (ln *SCTPListener) Subscribe(event ...EventType) error {
 // Unsubscribe from one or more of the SCTP event types we have previously subscribed.
 func (ln *SCTPListener) Unsubscribe(event ...EventType) error {
 	if !ln.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	for _, e := range event {
 		if err := ln.fd.subscribe(e, false); err != nil {
@@ -255,14 +256,14 @@ func (ln *SCTPListener) ok() bool { return ln != nil && ln.fd != nil }
 
 func (ln *SCTPListener) close() error {
 	if !ln.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	return ln.fd.f.Close()
 }
 
 func (ln *SCTPListener) accept() (*SCTPConn, error) {
 	if !ln.ok() {
-		return nil, errEINVAL
+		return nil, unix.EINVAL
 	}
 	fd, err := ln.fd.accept()
 	if err != nil {

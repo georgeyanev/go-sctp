@@ -41,7 +41,7 @@ type sctpFD struct {
 // in [RFC5061] is supported, adds the specified addresses to existing bind
 func (fd *sctpFD) bind(laddr *SCTPAddr, bindMode int) error {
 	if !fd.initialized() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 
 	var err error
@@ -102,7 +102,7 @@ func (fd *sctpFD) listen(sysfd int, laddr *SCTPAddr, backlog int, lc *ListenConf
 // So, we call the socket level accept function wrapped by a Read call and not by a Control call.
 func (fd *sctpFD) accept() (*sctpFD, error) {
 	if !fd.initialized() {
-		return nil, errEINVAL
+		return nil, unix.EINVAL
 	}
 
 	var err error
@@ -192,7 +192,7 @@ func (fd *sctpFD) dial(ctx context.Context, sysfd int, raddr *SCTPAddr, d *Diale
 
 func (fd *sctpFD) writeMsg(b []byte, info *SndInfo, to *net.IPAddr, flags int) (int, error) {
 	if !fd.initialized() || (to != nil && fd.raddr.Load() == nil) {
-		return 0, errEINVAL
+		return 0, unix.EINVAL
 	}
 	var actualInfo *SndInfo
 	if info != nil && info.Ppid > 0 {
@@ -264,7 +264,7 @@ func (fd *sctpFD) writeMsg(b []byte, info *SndInfo, to *net.IPAddr, flags int) (
 // Inspect rcvFlags for SCTP_EOR to know if a whole STCP message is read or just a part of it
 func (fd *sctpFD) readMsg(b []byte) (int, *RcvInfo, int, error) {
 	if !fd.initialized() {
-		return 0, nil, 0, errEINVAL
+		return 0, nil, 0, unix.EINVAL
 	}
 	var err error
 	var n, oobn, recvFlags int
@@ -333,7 +333,7 @@ func (fd *sctpFD) refreshRemoteAddr() {
 // creates an os.File, thus effectively registering the socket with the go network poller
 func (fd *sctpFD) init(sysfd int) error {
 	if fd.initialized() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 
 	fd.f = os.NewFile(uintptr(sysfd), "")
@@ -351,7 +351,7 @@ func (fd *sctpFD) init(sysfd int) error {
 
 func (fd *sctpFD) retrieveLocalAddr() (*SCTPAddr, error) {
 	if !fd.initialized() {
-		return nil, errEINVAL
+		return nil, unix.EINVAL
 	}
 	const SCTP_GET_LOCAL_ADDRS int = 109
 	return fd.retrieveAddr(SCTP_GET_LOCAL_ADDRS)
@@ -359,7 +359,7 @@ func (fd *sctpFD) retrieveLocalAddr() (*SCTPAddr, error) {
 
 func (fd *sctpFD) retrieveRemoteAddr() (*SCTPAddr, error) {
 	if !fd.initialized() {
-		return nil, errEINVAL
+		return nil, unix.EINVAL
 	}
 	const SCTP_GET_PEER_ADDRS int = 108
 	a, err := fd.retrieveAddr(SCTP_GET_PEER_ADDRS)
@@ -371,7 +371,7 @@ func (fd *sctpFD) retrieveRemoteAddr() (*SCTPAddr, error) {
 
 func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
 	if !fd.initialized() {
-		return nil, errEINVAL
+		return nil, unix.EINVAL
 	}
 
 	// SCTP_ADDRS_BUF_SIZE is the allocated buffer for system calls returning local/remote sctp multi-homed addresses
@@ -406,7 +406,7 @@ func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
 
 func (fd *sctpFD) subscribe(event EventType, enabled bool) error {
 	if !fd.initialized() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	const SCTP_EVENT = 127
 	type sctpEventType struct {
@@ -444,14 +444,14 @@ func (fd *sctpFD) ctrlNetwork() string {
 
 func (fd *sctpFD) close() error {
 	if !fd.initialized() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	return fd.f.Close()
 }
 
 func (fd *sctpFD) shutdown(how int) error {
 	if !fd.initialized() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	var err error
 	doErr := fd.rc.Control(func(fd uintptr) {
