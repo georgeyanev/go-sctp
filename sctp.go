@@ -1,3 +1,7 @@
+// Copyright (c) 2024 George Yanev
+// Use of this source code is governed by a MIT
+// license that can be found in the LICENSE file.
+
 //go:build linux
 
 package sctp
@@ -135,10 +139,9 @@ type RcvInfo struct {
 	AssocID int32
 }
 
-// TODO: Add build tags and license info
-// TODO: Get Assoc Status (SCTP_STATUS)
 // TODO: Determine minimum go version supported
 // TODO: Add readme
+// TODO: Get Assoc Status (SCTP_STATUS)
 // TODO: Test on different architectures
 // TODO: Add heartbeat management (SCTP_PEER_ADDR_PARAMS)
 // TODO: Cookie (SCTP_ASSOCINFO)
