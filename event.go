@@ -176,7 +176,7 @@ func (*ShutdownEvent) Flags() int { return 0 }
 
 // AdaptationEvent is delivered by SCTP to inform the application
 // about the peer's adaptation layer indication (When a peer sends
-// an Adaptation Layer Indication parameter as described in [RFC5061])
+// an Adaptation Layer Indication parameter as described in RFC5061)
 type AdaptationEvent struct {
 	// This field holds the bit array sent by the peer
 	// in the Adaptation Layer Indication parameter
@@ -197,7 +197,7 @@ type SendFailedEvent struct {
 
 	// This value represents the reason why the send failed,
 	// and if set, will be an SCTP protocol error code as defined in
-	// Section 3.3.10 of [RFC9260].
+	// Section 3.3.10 of RFC9260.
 	Error uint32
 
 	// This field includes the ancillary data (struct

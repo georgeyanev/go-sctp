@@ -14,7 +14,6 @@ import (
 )
 
 // A Dialer contains options for connecting to an address.
-// Dialer TO DO: possibly add more fields (specific to SCTP)
 type Dialer struct {
 	// Timeout is the maximum amount of time a dial will wait for
 	// a connect to complete. If Deadline is also set, it may fail
@@ -40,8 +39,8 @@ type Dialer struct {
 	// connection but before actually dialing.
 	//
 	// Network and address parameters passed to Control function are not
-	// necessarily the ones passed to Dial. For example, passing "tcp" to Dial
-	// will cause the Control function to be called with "tcp4" or "tcp6".
+	// necessarily the ones passed to Dial. For example, passing "sctp" to Dial
+	// will cause the Control function to be called with "sctp4" or "sctp6".
 	//
 	// Control is ignored if ControlContext is not nil.
 	Control func(network, address string, c syscall.RawConn) error
@@ -50,19 +49,14 @@ type Dialer struct {
 	// connection but before actually dialing.
 	//
 	// Network and address parameters passed to ControlContext function are not
-	// necessarily the ones passed to Dial. For example, passing "tcp" to Dial
-	// will cause the ControlContext function to be called with "tcp4" or "tcp6".
+	// necessarily the ones passed to Dial. For example, passing "sctp" to Dial
+	// will cause the ControlContext function to be called with "sctp4" or "sctp6".
 	//
 	// If ControlContext is not nil, Control is ignored.
 	ControlContext func(ctx context.Context, network, address string, c syscall.RawConn) error
 
 	// provides information for initializing new SCTP associations
 	InitOptions InitOptions
-
-	// SCTP heartbeats are enabled by default and the interval between them are defined
-	// in `net.sctp.hb_interval` kernel parameter which is 30 seconds by default.
-	// TO DO: make an option to disable them? Disabling means disable only sending heartbeats
-
 }
 
 // Dial connects to the address on the named network.
@@ -91,8 +85,6 @@ type Dialer struct {
 // If the host is empty or a literal unspecified IP address, as
 // in ":80", "0.0.0.0:80" or "[::]:80" the local system is
 // assumed.
-//
-// For Unix networks, the address must be a file system path.
 func Dial(network, address string) (net.Conn, error) {
 	var d Dialer
 	return d.Dial(network, address)
@@ -119,14 +111,13 @@ func (d *Dialer) Dial(network, address string) (net.Conn, error) {
 	return d.DialContext(context.Background(), network, address)
 }
 
-// Dial connects to the address on the named network using the provided context.
+// DialContext connects to the address on the named network using the provided context.
 // The context is not used in resolving host to IP addresses (if there is any).
-
+//
 // The provided Context must be non-nil. If the context expires before
 // the connection is complete, an error is returned. Once successfully
 // connected, any expiration of the context will not affect the
 // connection.
-
 func (d *Dialer) DialContext(ctx context.Context, network string, address string) (net.Conn, error) {
 	// resolve with no context
 	raddr, err := resolveSCTPAddr("dial", network, address, d.LocalAddr)
@@ -140,7 +131,7 @@ func (d *Dialer) DialSCTP(network string, raddr *SCTPAddr) (*SCTPConn, error) {
 	return d.DialSCTPContext(context.Background(), network, raddr)
 }
 
-// DialSCTPContext acts like [DialContext] taking SCTP addresses and returning a SCTPConn.
+// DialSCTPContext acts like DialContext taking SCTP addresses and returning a SCTPConn.
 func (d *Dialer) DialSCTPContext(ctx context.Context, network string, raddr *SCTPAddr) (*SCTPConn, error) {
 	if ctx == nil {
 		panic("nil context")
@@ -182,5 +173,5 @@ func dialSCTP(ctx context.Context, network string, raddr *SCTPAddr, d *Dialer) (
 		return nil, &net.OpError{Op: "dial", Net: network, Source: d.LocalAddr.opAddr(), Addr: raddr.opAddr(), Err: err}
 	}
 
-	return newSCTPConnNew(fd), nil
+	return newSCTPConn(fd), nil
 }

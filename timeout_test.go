@@ -819,20 +819,23 @@ func TestWriteTimeoutFluctuationSCTP(t *testing.T) {
 	}
 }
 
-//// These are slow
-//func TestVariousDeadlinesSCTP(t *testing.T) {
-//	testVariousDeadlines(t)
-//}
-//
-//func TestVariousDeadlines1ProcSCTP(t *testing.T) {
-//	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
-//	testVariousDeadlines(t)
-//}
-//
-//func TestVariousDeadlines4Proc(t *testing.T) {
-//	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(4))
-//	testVariousDeadlines(t)
-//}
+// These are slow
+func TestVariousDeadlinesSCTP(t *testing.T) {
+	t.Skip("this test is slow, skipping")
+	testVariousDeadlines(t)
+}
+
+func TestVariousDeadlines1ProcSCTP(t *testing.T) {
+	t.Skip("this test is slow, skipping")
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
+	testVariousDeadlines(t)
+}
+
+func TestVariousDeadlines4Proc(t *testing.T) {
+	t.Skip("this test is slow, skipping")
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(4))
+	testVariousDeadlines(t)
+}
 
 func testVariousDeadlines(t *testing.T) {
 	handler := func(ls *localServerSCTP, ln net.Listener) {
@@ -905,76 +908,77 @@ func testVariousDeadlines(t *testing.T) {
 	}
 }
 
-// TODO: Revisit, this test get stuck
-//func TestReadWriteProlongedTimeoutSCTP(t *testing.T) {
-//	handler := func(ls *localServerSCTP, ln net.Listener) {
-//		c, err := ln.Accept()
-//		if err != nil {
-//			t.Error(err)
-//			return
-//		}
-//		defer c.Close()
-//
-//		var wg sync.WaitGroup
-//		wg.Add(2)
-//		go func() {
-//			defer wg.Done()
-//			var b [1]byte
-//			for {
-//				if err := c.SetReadDeadline(time.Now().Add(time.Hour)); err != nil {
-//					if perr := parseCommonError(err); perr != nil {
-//						t.Error(perr)
-//					}
-//					t.Error(err)
-//					return
-//				}
-//				if _, err := c.Read(b[:]); err != nil {
-//					if perr := parseReadError(err); perr != nil {
-//						t.Error(perr)
-//					}
-//					return
-//				}
-//			}
-//		}()
-//		go func() {
-//			defer wg.Done()
-//			var b [1]byte
-//			for {
-//				if err := c.SetWriteDeadline(time.Now().Add(time.Hour)); err != nil {
-//					if perr := parseCommonError(err); perr != nil {
-//						t.Error(perr)
-//					}
-//					t.Error(err)
-//					return
-//				}
-//				if _, err := c.Write(b[:]); err != nil {
-//					if perr := parseWriteError(err); perr != nil {
-//						t.Error(perr)
-//					}
-//					return
-//				}
-//			}
-//		}()
-//		wg.Wait()
-//	}
-//	ls := newLocalServerSCTP(t, "sctp")
-//	defer ls.teardown()
-//	if err := ls.buildup(handler); err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	c, err := Dial(ls.Listener.Addr().Network(), ls.Listener.Addr().String())
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	defer c.Close()
-//
-//	var b [1]byte
-//	for i := 0; i < 1000; i++ {
-//		c.Write(b[:])
-//		c.Read(b[:])
-//	}
-//}
+// TODO: Revisit
+func TestReadWriteProlongedTimeoutSCTP(t *testing.T) {
+	t.Skip("to be revisited")
+	handler := func(ls *localServerSCTP, ln net.Listener) {
+		c, err := ln.Accept()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer c.Close()
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			var b [1]byte
+			for {
+				if err := c.SetReadDeadline(time.Now().Add(time.Hour)); err != nil {
+					if perr := parseCommonError(err); perr != nil {
+						t.Error(perr)
+					}
+					t.Error(err)
+					return
+				}
+				if _, err := c.Read(b[:]); err != nil {
+					if perr := parseReadError(err); perr != nil {
+						t.Error(perr)
+					}
+					return
+				}
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			var b [1]byte
+			for {
+				if err := c.SetWriteDeadline(time.Now().Add(time.Hour)); err != nil {
+					if perr := parseCommonError(err); perr != nil {
+						t.Error(perr)
+					}
+					t.Error(err)
+					return
+				}
+				if _, err := c.Write(b[:]); err != nil {
+					if perr := parseWriteError(err); perr != nil {
+						t.Error(perr)
+					}
+					return
+				}
+			}
+		}()
+		wg.Wait()
+	}
+	ls := newLocalServerSCTP(t, "sctp")
+	defer ls.teardown()
+	if err := ls.buildup(handler); err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := Dial(ls.Listener.Addr().Network(), ls.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	var b [1]byte
+	for i := 0; i < 1000; i++ {
+		c.Write(b[:])
+		c.Read(b[:])
+	}
+}
 
 func TestReadWriteDeadlineRaceSCTP(t *testing.T) {
 	N := 1000

@@ -12,7 +12,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -556,93 +555,6 @@ func TestSCTPStress(t *testing.T) {
 	<-done
 }
 
-// Test that >32-bit reads work on 64-bit systems.
-// On 32-bit systems this tests that maxint reads work.
-func TestSCTPBig(t *testing.T) {
-	t.Skip("For this to pass fast a larger socket buffers are required (i.e. 4MB) and larger single message size.")
-	for _, writev := range []bool{false} {
-		t.Run(fmt.Sprintf("writev=%v", writev), func(t *testing.T) {
-			ln := newLocalListenerSCTP(t, "sctp")
-			defer ln.Close()
-
-			x := int(1 << 30)
-			x = x*5 + 1<<20 // just over 5 GB on 64-bit, just over 1GB on 32-bit
-			done := make(chan int)
-			go func() {
-				defer close(done)
-				c, err := ln.Accept()
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				buf := make([]byte, x)
-				var n int
-				if writev {
-					var n64 int64
-					n64, err = (&net.Buffers{buf}).WriteTo(c)
-					n = int(n64)
-				} else {
-					n, err = writeAll(c.(*SCTPConn), buf)
-				}
-				if n != len(buf) || err != nil {
-					t.Errorf("Write(buf) = %d, %v, want %d, nil", n, err, x)
-				}
-				c.Close()
-			}()
-
-			c, err := Dial("sctp", ln.Addr().String())
-			if err != nil {
-				t.Fatal(err)
-			}
-			buf := make([]byte, x)
-			n, err := io.ReadFull(c, buf)
-			if n != len(buf) || err != nil {
-				t.Errorf("Read(buf) = %d, %v, want %d, nil", n, err, x)
-			}
-			c.Close()
-			<-done
-		})
-	}
-}
-
-// Writes a big buffer (greater than a socket send buffer) to the conn object
-// splitting the buffer into smaller peaces and writing them one by one.
-// we cannot pass the large buffer to c.Write because it will not fit in the socket buffer
-// and the function will return EMSGSIZE.
-// See: https://datatracker.ietf.org/doc/html/rfc6458#page-67
-
-func writeAll(c *SCTPConn, p []byte) (int, error) {
-	if !c.ok() {
-		return 0, errEINVAL
-	}
-
-	//wBufSize, err := c.fd.getWriteBuffer()
-	wBufSize := 1024
-
-	var nn, lastReported int
-	for {
-		maxL := len(p)
-		if maxL-nn > wBufSize {
-			maxL = nn + wBufSize
-		}
-
-		n, err := c.Write(p[nn:maxL])
-		if n > 0 {
-			nn += n
-		}
-		if nn == len(p) {
-			return nn, err
-		}
-		if err != nil {
-			return nn, err
-		}
-		if (nn - lastReported) >= 1024*1024*10 { //10MB
-			log.Printf("%d bytes written", nn)
-			lastReported = nn
-		}
-	}
-}
-
 func TestCopyPipeIntoSCTP(t *testing.T) {
 	ln := newLocalListenerSCTP(t, "sctp")
 	defer ln.Close()
@@ -739,7 +651,7 @@ func BenchmarkSetReadDeadlineSCTP(b *testing.B) {
 	}
 }
 
-// TODO: revisit when managing heartbeats are implemented
+// TODO: Revisit when managing heartbeats are implemented
 func TestDialSCTPDefaultKeepAlive(t *testing.T) {
 	t.Skip("revisit when managing heartbeats are implemented")
 }

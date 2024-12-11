@@ -8,6 +8,7 @@ package sctp
 
 import (
 	"errors"
+	"golang.org/x/sys/unix"
 	"io"
 	"net"
 	"unsafe"
@@ -27,7 +28,7 @@ type SCTPConn struct {
 // `net.sctp.addip_noauth_enable` kernel parameters.
 func (c *SCTPConn) BindAdd(address string) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	laddr, err := resolveSCTPAddr("bindx", c.fd.net, address, nil)
 	if err != nil {
@@ -43,7 +44,7 @@ func (c *SCTPConn) BindAdd(address string) error {
 
 func (c *SCTPConn) BindAddSCTP(laddr *SCTPAddr) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := c.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_ADD); err != nil {
 		return &net.OpError{Op: "bindx", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(),
@@ -62,7 +63,7 @@ func (c *SCTPConn) BindAddSCTP(laddr *SCTPAddr) error {
 // `net.sctp.addip_noauth_enable` kernel parameters.
 func (c *SCTPConn) BindRemove(address string) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	laddr, err := resolveSCTPAddr("bindx", c.fd.net, address, nil)
 	if err != nil {
@@ -78,7 +79,7 @@ func (c *SCTPConn) BindRemove(address string) error {
 
 func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := c.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_REM); err != nil {
 		return &net.OpError{Op: "bindx", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(),
@@ -111,7 +112,7 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 //	err: error
 func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
 	if !c.ok() {
-		return 0, nil, 0, errEINVAL
+		return 0, nil, 0, unix.EINVAL
 	}
 	n, rcvInfo, rcvFlags, err := c.fd.readMsg(b)
 	if err != nil && err != io.EOF {
@@ -147,7 +148,7 @@ func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
 // SCTPConn.Write can be used instead.
 func (c *SCTPConn) WriteMsgExt(b []byte, info *SndInfo, to *net.IPAddr, flags int) (int, error) {
 	if !c.ok() {
-		return 0, errEINVAL
+		return 0, unix.EINVAL
 	}
 	n, err := c.fd.writeMsg(b, info, to, flags)
 	if err != nil {
@@ -162,7 +163,7 @@ func (c *SCTPConn) WriteMsgExt(b []byte, info *SndInfo, to *net.IPAddr, flags in
 // ReadMsg having SCTP_NOTIFICATION flag set in recvFlags.
 func (c *SCTPConn) Subscribe(event ...EventType) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	for _, e := range event {
 		if err := c.fd.subscribe(e, true); err != nil {
@@ -175,7 +176,7 @@ func (c *SCTPConn) Subscribe(event ...EventType) error {
 // Unsubscribe from one or more of the SCTP event types we have previously subscribed.
 func (c *SCTPConn) Unsubscribe(event ...EventType) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	for _, e := range event {
 		if err := c.fd.subscribe(e, false); err != nil {
@@ -185,9 +186,11 @@ func (c *SCTPConn) Unsubscribe(event ...EventType) error {
 	return nil
 }
 
+// RefreshRemoteAddr is called to refresh potentially changed remote peer address.
+// I.e. after receiving an SCTP_PEER_ADDR_CHANGE event
 func (c *SCTPConn) RefreshRemoteAddr() (*SCTPAddr, error) {
 	if !c.ok() {
-		return nil, errEINVAL
+		return nil, unix.EINVAL
 	}
 	c.fd.refreshRemoteAddr()
 	return c.fd.raddr.Load(), nil
@@ -202,7 +205,7 @@ func (c *SCTPConn) RefreshRemoteAddr() (*SCTPAddr, error) {
 // Turning this option on disables any Nagle-like algorithm.
 func (c *SCTPConn) SetNoDelay(noDelay bool) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := c.fd.setNoDelay(noDelay); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
@@ -212,7 +215,7 @@ func (c *SCTPConn) SetNoDelay(noDelay bool) error {
 
 func (c *SCTPConn) GetNoDelay() (bool, error) {
 	if !c.ok() {
-		return false, errEINVAL
+		return false, unix.EINVAL
 	}
 	b, err := c.fd.getNoDelay()
 	if err != nil {
@@ -230,7 +233,7 @@ func (c *SCTPConn) GetNoDelay() (bool, error) {
 // reassembled by the peer.
 func (c *SCTPConn) SetDisableFragments(disableFragments bool) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := c.fd.setDisableFragments(disableFragments); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
@@ -240,7 +243,7 @@ func (c *SCTPConn) SetDisableFragments(disableFragments bool) error {
 
 func (c *SCTPConn) GetDisableFragments() (bool, error) {
 	if !c.ok() {
-		return false, errEINVAL
+		return false, unix.EINVAL
 	}
 	b, err := c.fd.getDisableFragments()
 	if err != nil {
@@ -249,9 +252,10 @@ func (c *SCTPConn) GetDisableFragments() (bool, error) {
 	return b, nil
 }
 
+// GetWriteBuffer returns the current socket's  write buffer size in bytes.
 func (c *SCTPConn) GetWriteBuffer() (int, error) {
 	if !c.ok() {
-		return 0, errEINVAL
+		return 0, unix.EINVAL
 	}
 	sbSize, err := c.fd.getWriteBuffer()
 	if err != nil {
@@ -260,9 +264,10 @@ func (c *SCTPConn) GetWriteBuffer() (int, error) {
 	return sbSize, nil
 }
 
+// GetReadBuffer returns the current socket's read buffer size in bytes.
 func (c *SCTPConn) GetReadBuffer() (int, error) {
 	if !c.ok() {
-		return 0, errEINVAL
+		return 0, unix.EINVAL
 	}
 	sbSize, err := c.fd.getReadBuffer()
 	if err != nil {
@@ -289,7 +294,7 @@ func (c *SCTPConn) GetReadBuffer() (int, error) {
 // shutdown phase will continue in the system.
 func (c *SCTPConn) SetLinger(sec int) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	err := c.fd.setLinger(sec)
 	if err != nil {
@@ -306,7 +311,7 @@ func (c *SCTPConn) SetLinger(sec int) error {
 // called to close the socket descriptor.
 func (c *SCTPConn) CloseRead() error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := c.fd.closeRead(); err != nil {
 		return &net.OpError{Op: "close", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
@@ -333,7 +338,7 @@ func (c *SCTPConn) CloseRead() error {
 // function, or SCTP_ABORT flag in SndInfo struct.
 func (c *SCTPConn) CloseWrite() error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := c.fd.closeWrite(); err != nil {
 		return &net.OpError{Op: "close", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
@@ -341,10 +346,9 @@ func (c *SCTPConn) CloseWrite() error {
 	return nil
 }
 
-func newSCTPConnNew(fd *sctpFD) *SCTPConn {
+func newSCTPConn(fd *sctpFD) *SCTPConn {
 	_ = fd.setNoDelay(true)
-
-	// TO DO: set heartbeat disable here or heartbeat interval
+	// TODO: manage heartbeat here
 	return &SCTPConn{conn{fd: fd}}
 }
 

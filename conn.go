@@ -7,6 +7,7 @@
 package sctp
 
 import (
+	"golang.org/x/sys/unix"
 	"io"
 	"net"
 	"syscall"
@@ -37,7 +38,7 @@ type conn struct {
 // If you want specific SCTP features, use the ReadMsg() functions.
 func (c *conn) Read(b []byte) (int, error) {
 	if !c.ok() {
-		return 0, errEINVAL
+		return 0, unix.EINVAL
 	}
 	n, err := c.fd.f.Read(b)
 	if err != nil && err != io.EOF {
@@ -60,10 +61,10 @@ func (c *conn) Read(b []byte) (int, error) {
 // the write buffer size of the socket.
 // See: https://datatracker.ietf.org/doc/html/rfc6458#page-67
 //
-// If you want specific SCTP features, use the WriteMsg() function.
+// If you want specific SCTP features, use the WriteMsg() functions.
 func (c *conn) Write(b []byte) (int, error) {
 	if !c.ok() {
-		return 0, errEINVAL
+		return 0, unix.EINVAL
 	}
 	n, err := c.fd.f.Write(b)
 	if err != nil {
@@ -72,9 +73,10 @@ func (c *conn) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// SetDeadline sets both the read and write deadlines associated with the Conn.
 func (c *conn) SetDeadline(t time.Time) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := c.fd.f.SetDeadline(t); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(), Err: err}
@@ -82,9 +84,10 @@ func (c *conn) SetDeadline(t time.Time) error {
 	return nil
 }
 
+// SetReadDeadline sets the read deadline associated with the Conn.
 func (c *conn) SetReadDeadline(t time.Time) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := c.fd.f.SetReadDeadline(t); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(), Err: err}
@@ -92,9 +95,10 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
+// SetWriteDeadline sets the write deadline associated with the Conn.
 func (c *conn) SetWriteDeadline(t time.Time) error {
 	if !c.ok() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 	if err := c.fd.f.SetWriteDeadline(t); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(), Err: err}
@@ -134,8 +138,5 @@ func (c *conn) RemoteAddr() net.Addr {
 	}
 	return c.fd.raddr.Load()
 }
-
-// TODO: write SCTP specific functions, i.e. specifying EOF upon return, specifying input/output stream etc.
-// bool is EOR
 
 func (c *conn) ok() bool { return c != nil && c.fd != nil }

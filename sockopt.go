@@ -100,7 +100,7 @@ func setInitOptions(fd int, initOptions InitOptions) error {
 
 func (fd *sctpFD) getNoDelay() (bool, error) {
 	if !fd.initialized() {
-		return false, errEINVAL
+		return false, unix.EINVAL
 	}
 
 	var err error
@@ -119,7 +119,7 @@ func (fd *sctpFD) getNoDelay() (bool, error) {
 
 func (fd *sctpFD) setNoDelay(b bool) error {
 	if !fd.initialized() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 
 	var err error
@@ -137,7 +137,7 @@ func (fd *sctpFD) setNoDelay(b bool) error {
 
 func (fd *sctpFD) getDisableFragments() (bool, error) {
 	if !fd.initialized() {
-		return false, errEINVAL
+		return false, unix.EINVAL
 	}
 
 	var err error
@@ -156,7 +156,7 @@ func (fd *sctpFD) getDisableFragments() (bool, error) {
 
 func (fd *sctpFD) setDisableFragments(b bool) error {
 	if !fd.initialized() {
-		return errEINVAL
+		return unix.EINVAL
 	}
 
 	var err error
@@ -174,7 +174,7 @@ func (fd *sctpFD) setDisableFragments(b bool) error {
 
 func (fd *sctpFD) getWriteBuffer() (int, error) {
 	if !fd.initialized() {
-		return 0, errEINVAL
+		return 0, unix.EINVAL
 	}
 	var err error
 	var sndBuf int
@@ -192,7 +192,7 @@ func (fd *sctpFD) getWriteBuffer() (int, error) {
 
 func (fd *sctpFD) getReadBuffer() (int, error) {
 	if !fd.initialized() {
-		return 0, errEINVAL
+		return 0, unix.EINVAL
 	}
 	var err error
 	var sndBuf int
@@ -243,14 +243,14 @@ func getsockoptBytes(fd, level, opt int, b []byte) error {
 		args := [5]uintptr{uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen))}
 		_, _, err := unix.Syscall(SYS_SOCKETCALL, _GETSOCKOPT, uintptr(unsafe.Pointer(&args)), 0)
 		if err != 0 {
-			return errnoErr(err)
+			return err
 		}
 		return nil
 	}
 
-	_, _, e1 := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen)), 0)
-	if e1 != 0 {
-		return errnoErr(e1)
+	_, _, err := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen)), 0)
+	if err != 0 {
+		return err
 	}
 	return nil
 }
