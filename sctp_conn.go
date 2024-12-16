@@ -329,6 +329,18 @@ func (c *SCTPConn) CloseWrite() error {
 	return nil
 }
 
+// Status returns the current status of the SCTP association.
+func (c *SCTPConn) Status() (*Status, error) {
+	if !c.ok() {
+		return nil, unix.EINVAL
+	}
+	sctpStatus, err := c.fd.status()
+	if err != nil {
+		return nil, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return sctpStatus, nil
+}
+
 func newSCTPConn(fd *sctpFD) *SCTPConn {
 	_ = fd.setNoDelay(true)
 	// TODO: manage heartbeat here
