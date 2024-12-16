@@ -6,7 +6,119 @@
 
 package sctp
 
-import "testing"
+import (
+	"bytes"
+	"errors"
+	"io"
+	"log"
+	"net"
+	"testing"
+)
+
+// Test AssocChange even
+func TestPartialRead(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
+		c, err1 := ln1.Accept()
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		defer func(c net.Conn) {
+			c.Close()
+			close(closeChan)
+		}(c)
+
+		c1 := c.(*SCTPConn)
+
+		b := make([]byte, 1)
+
+		// receive first data byte
+		n, rcvInfo, recvFlags, err1 := c1.ReadMsg(b)
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		if (recvFlags & SCTP_EOR) == SCTP_EOR {
+			errorChan <- errors.New("expected partial message")
+			return
+		}
+		if rcvInfo == nil {
+			errorChan <- errors.New("expected non-nil rcvInfo")
+			return
+		}
+		if !bytes.Equal(b[:n], []byte("1")) {
+			errorChan <- errors.New("expected '1'")
+			return
+		}
+		// receive second data byte
+		n, rcvInfo, recvFlags, err1 = c1.ReadMsg(b)
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		if (recvFlags & SCTP_EOR) == SCTP_EOR {
+			errorChan <- errors.New("expected partial message")
+			return
+		}
+		if rcvInfo == nil {
+			errorChan <- errors.New("expected non-nil rcvInfo")
+			return
+		}
+		if !bytes.Equal(b[:n], []byte("2")) {
+			errorChan <- errors.New("expected '2'")
+			return
+		}
+		// receive third data byte
+		n, rcvInfo, recvFlags, err1 = c1.ReadMsg(b)
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		if (recvFlags & SCTP_EOR) != SCTP_EOR {
+			errorChan <- errors.New("expected end of message")
+			return
+		}
+		if rcvInfo == nil {
+			errorChan <- errors.New("expected non-nil rcvInfo")
+			return
+		}
+		if !bytes.Equal(b[:n], []byte("3")) {
+			errorChan <- errors.New("expected '3'")
+			return
+		}
+
+		// subsequent reads from association should return EOF
+		n, rcvInfo, recvFlags, err1 = c1.ReadMsg(b)
+		if err1 == nil || err1 != io.EOF {
+			errorChan <- errors.New("expected EOF")
+			return
+		}
+	}()
+
+	c, err := Dial("sctp4", ln1.Addr().String())
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = c.Write([]byte("123"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+
+	select {
+	case <-closeChan:
+	case err := <-errorChan:
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+}
 
 func TestHtonui32Ntohui32(t *testing.T) {
 	var a uint32 = 0x01020304

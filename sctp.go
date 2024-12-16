@@ -143,10 +143,7 @@ type RcvInfo struct {
 	AssocID int32
 }
 
-// TODO: Add readme
-// TODO: Test partial read
 // TODO: Get Assoc Status (SCTP_STATUS)
-// TODO: Test on different architectures
 // TODO: Add heartbeat management (SCTP_PEER_ADDR_PARAMS)
 // TODO: Cookie (SCTP_ASSOCINFO)
 // TODO: Auth and SPA (WriteMsgSpa, WriteMsgSpaExt, Read equivalents)

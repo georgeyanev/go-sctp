@@ -106,10 +106,13 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 //
 // ReadMsg returns:
 //
-//	n: number of bytes read and stored into b
-//	rcvInfo: information about the received message
-//	recvFlags: received message flags (i.e. SCTP_NOTIFICATION, SCTP_EOR)
-//	err: error
+// n: number of bytes read and stored into b
+// rcvInfo: information about the received message
+// recvFlags: received message flags (i.e. SCTP_NOTIFICATION, SCTP_EOR)
+// err: error
+//
+// Since os.File is used for integration with the poller, os.ErrClosed
+// should be checked instead of net.ErrClosed.
 func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
 	if !c.ok() {
 		return 0, nil, 0, unix.EINVAL
@@ -141,8 +144,10 @@ func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
 // caller provides an SndInfo struct with the Flags field set to
 // SCTP_EOF.
 //
-// WriteMsg returns the number of bytes accepted by the kernel or an
+// WriteMsgExt returns the number of bytes accepted by the kernel or an
 // error in case of any.
+// Since os.File is used for integration with the poller, os.ErrClosed
+// should be checked instead of net.ErrClosed.
 //
 // If the caller finds the default behavior reasonable, the function
 // SCTPConn.Write can be used instead.
