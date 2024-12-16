@@ -98,6 +98,68 @@ func setInitOptions(fd int, initOptions InitOptions) error {
 	return nil
 }
 
+func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
+	if !fd.initialized() {
+		return nil, unix.EINVAL
+	}
+
+	// SCTP_ADDRS_BUF_SIZE is the allocated buffer for system calls returning local/remote sctp multi-homed addresses
+	const SCTP_ADDRS_BUF_SIZE int = 4096 //enough for most cases
+
+	type rawSctpAddrs struct {
+		assocId int32
+		addrNum uint32
+		addrs   [SCTP_ADDRS_BUF_SIZE]byte
+	}
+	rawParam := rawSctpAddrs{} // to be filled by the getsockopt call
+
+	var err error
+	rawParamBuf := unsafe.Slice((*byte)(unsafe.Pointer(&rawParam)), unsafe.Sizeof(rawParam))
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = getsockoptBytes(int(fd), unix.IPPROTO_SCTP, optName, rawParamBuf)
+	})
+	if doErr != nil {
+		return nil, doErr
+	}
+	if err != nil {
+		return nil, os.NewSyscallError("getsockopt", err)
+	}
+
+	sctpAddr, err := fromSockaddrBuff(rawParam.addrs[:], int(rawParam.addrNum))
+	if err != nil {
+		return nil, err
+	}
+
+	return sctpAddr, nil
+}
+
+func (fd *sctpFD) subscribe(event EventType, enabled bool) error {
+	if !fd.initialized() {
+		return unix.EINVAL
+	}
+	const SCTP_EVENT = 127
+	type sctpEventType struct {
+		_      int32
+		seType uint16
+		seOn   uint8
+	}
+
+	sctpEvent := sctpEventType{seType: uint16(event), seOn: uint8(boolint(enabled))}
+	sctpEventBuf := unsafe.Slice((*byte)(unsafe.Pointer(&sctpEvent)), unsafe.Sizeof(sctpEvent))
+
+	var err error
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = unix.SetsockoptString(int(fd), unix.IPPROTO_SCTP, SCTP_EVENT, string(sctpEventBuf))
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
+	return nil
+}
+
 func (fd *sctpFD) setNoDelay(b bool) error {
 	if !fd.initialized() {
 		return unix.EINVAL
