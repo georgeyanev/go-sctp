@@ -98,25 +98,6 @@ func setInitOptions(fd int, initOptions InitOptions) error {
 	return nil
 }
 
-func (fd *sctpFD) getNoDelay() (bool, error) {
-	if !fd.initialized() {
-		return false, unix.EINVAL
-	}
-
-	var err error
-	var optVal int
-	doErr := fd.rc.Control(func(fd uintptr) {
-		optVal, err = unix.GetsockoptInt(int(fd), unix.IPPROTO_SCTP, _SCTP_NODELAY)
-	})
-	if doErr != nil {
-		return false, doErr
-	}
-	if err != nil {
-		return false, os.NewSyscallError("getsockopt", err)
-	}
-	return intbool(optVal), nil
-}
-
 func (fd *sctpFD) setNoDelay(b bool) error {
 	if !fd.initialized() {
 		return unix.EINVAL
@@ -133,25 +114,6 @@ func (fd *sctpFD) setNoDelay(b bool) error {
 		return os.NewSyscallError("setsockopt", err)
 	}
 	return nil
-}
-
-func (fd *sctpFD) getDisableFragments() (bool, error) {
-	if !fd.initialized() {
-		return false, unix.EINVAL
-	}
-
-	var err error
-	var optVal int
-	doErr := fd.rc.Control(func(fd uintptr) {
-		optVal, err = unix.GetsockoptInt(int(fd), unix.IPPROTO_SCTP, _SCTP_DISABLE_FRAGMENTS)
-	})
-	if doErr != nil {
-		return false, doErr
-	}
-	if err != nil {
-		return false, os.NewSyscallError("getsockopt", err)
-	}
-	return intbool(optVal), nil
 }
 
 func (fd *sctpFD) setDisableFragments(b bool) error {
@@ -172,7 +134,7 @@ func (fd *sctpFD) setDisableFragments(b bool) error {
 	return nil
 }
 
-func (fd *sctpFD) getWriteBuffer() (int, error) {
+func (fd *sctpFD) writeBuffer() (int, error) {
 	if !fd.initialized() {
 		return 0, unix.EINVAL
 	}
@@ -190,7 +152,7 @@ func (fd *sctpFD) getWriteBuffer() (int, error) {
 	return sndBuf, nil
 }
 
-func (fd *sctpFD) getReadBuffer() (int, error) {
+func (fd *sctpFD) readBuffer() (int, error) {
 	if !fd.initialized() {
 		return 0, unix.EINVAL
 	}

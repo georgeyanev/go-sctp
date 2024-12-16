@@ -218,17 +218,6 @@ func (c *SCTPConn) SetNoDelay(noDelay bool) error {
 	return nil
 }
 
-func (c *SCTPConn) GetNoDelay() (bool, error) {
-	if !c.ok() {
-		return false, unix.EINVAL
-	}
-	b, err := c.fd.getNoDelay()
-	if err != nil {
-		return false, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
-	}
-	return b, nil
-}
-
 // SetDisableFragments turns an on/off flag. If enabled, no SCTP message
 // fragmentation will be performed. The effect of enabling this option
 // is that if a message being sent exceeds the current Path MTU (PMTU)
@@ -246,35 +235,24 @@ func (c *SCTPConn) SetDisableFragments(disableFragments bool) error {
 	return nil
 }
 
-func (c *SCTPConn) GetDisableFragments() (bool, error) {
-	if !c.ok() {
-		return false, unix.EINVAL
-	}
-	b, err := c.fd.getDisableFragments()
-	if err != nil {
-		return false, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
-	}
-	return b, nil
-}
-
-// GetWriteBuffer returns the current socket's  write buffer size in bytes.
-func (c *SCTPConn) GetWriteBuffer() (int, error) {
+// WriteBuffer returns the current socket's  write buffer size in bytes.
+func (c *SCTPConn) WriteBuffer() (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
 	}
-	sbSize, err := c.fd.getWriteBuffer()
+	sbSize, err := c.fd.writeBuffer()
 	if err != nil {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
 	return sbSize, nil
 }
 
-// GetReadBuffer returns the current socket's read buffer size in bytes.
-func (c *SCTPConn) GetReadBuffer() (int, error) {
+// ReadBuffer returns the current socket's read buffer size in bytes.
+func (c *SCTPConn) ReadBuffer() (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
 	}
-	sbSize, err := c.fd.getReadBuffer()
+	sbSize, err := c.fd.readBuffer()
 	if err != nil {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
