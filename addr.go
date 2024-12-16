@@ -7,13 +7,11 @@
 package sctp
 
 import (
-	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"golang.org/x/sys/unix"
 	"net"
-	"strconv"
 	"strings"
 	"unsafe"
 )
@@ -31,23 +29,15 @@ func (a *SCTPAddr) String() string {
 	if a == nil {
 		return "<nil>"
 	}
-
-	var b bytes.Buffer
-	for n, i := range a.IPAddrs {
-		if i.IP.To4() != nil {
-			b.WriteString(i.String())
-		} else if i.IP.To16() != nil {
-			b.WriteRune('[')
-			b.WriteString(i.String())
-			b.WriteRune(']')
-		}
-		if n < len(a.IPAddrs)-1 {
-			b.WriteRune('/')
+	var ipStrings []string
+	for _, ipAddr := range a.IPAddrs {
+		if ipAddr.IP.To4() != nil {
+			ipStrings = append(ipStrings, ipAddr.String())
+		} else if ipAddr.IP.To16() != nil {
+			ipStrings = append(ipStrings, "["+ipAddr.String()+"]")
 		}
 	}
-	b.WriteRune(':')
-	b.WriteString(strconv.Itoa(a.Port))
-	return b.String()
+	return strings.Join(ipStrings, "/") + fmt.Sprintf(":%d", a.Port)
 }
 
 // Wildcard addresses cannot be used in combination with non-wildcard addresses.

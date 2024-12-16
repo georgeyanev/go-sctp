@@ -15,7 +15,6 @@ import (
 	"testing"
 )
 
-// Test AssocChange even
 func TestPartialRead(t *testing.T) {
 	ln1, err := Listen("sctp4", "127.0.0.1:0")
 	if err != nil {
@@ -114,6 +113,55 @@ func TestPartialRead(t *testing.T) {
 	select {
 	case <-closeChan:
 	case err := <-errorChan:
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+}
+func TestSCTPStatus(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
+		c, err1 := ln1.Accept()
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		defer func(c net.Conn) {
+			c.Close()
+			close(closeChan)
+		}(c)
+
+		c1 := c.(*SCTPConn)
+		sctpStatus, err1 := c1.Status()
+		if err1 != nil {
+			errorChan <- err1
+		}
+		// remote ostreams are 11, ours in are 10, remote Instreams are 9, ours out are 10
+		if sctpStatus.InStreams != 10 || sctpStatus.OutStreams != 9 {
+			errorChan <- errors.New("expected 10 inStreams and 9 outStreams")
+		}
+	}()
+	d := Dialer{
+		InitOptions: InitOptions{
+			NumOstreams:  11,
+			MaxInstreams: 9,
+		},
+	}
+	c, err := d.Dial("sctp4", ln1.Addr().String())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	select {
+	case <-closeChan:
+		c.Close()
+	case err := <-errorChan:
+		c.Close()
 		if err != io.EOF {
 			t.Fatal(err)
 		}

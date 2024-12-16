@@ -36,7 +36,7 @@ type conn struct {
 // Since os.File is used for integration with the poller, os.ErrClosed
 // should be checked instead of net.ErrClosed.
 //
-// If specific SCTP features are needed, use the ReadMsg() functions.
+// If specific SCTP features are needed, use SCTPConn.ReadMsg.
 func (c *conn) Read(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
@@ -65,7 +65,7 @@ func (c *conn) Read(b []byte) (int, error) {
 // Write return errors from `os` package so check for os.ErrClosed instead
 // of net.ErrClosed.
 //
-// If specific SCTP features are needed, use the ReadMsg() functions.
+// If specific SCTP features are needed, use SCTPConn.WriteMsg.
 func (c *conn) Write(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
@@ -114,8 +114,7 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 // By default, a graceful close is performed and
 // a SHUTDOWN message is sent to the peer.
 // If different behaviour is desired (i.e. immediate
-// close and sending ABORT chunk), use the SCTPConn.SetLinger
-// function.
+// close and sending ABORT chunk), use SCTPConn.SetLinger
 // Also, different close behaviour can be achieved by using
 // the SndInfo flags appropriately.
 func (c *conn) Close() error {

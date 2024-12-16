@@ -237,7 +237,6 @@ const (
 	SCTP_INACTIVE = 0
 )
 
-// TODO: Get Assoc Status (SCTP_STATUS)
 // TODO: Add heartbeat management (SCTP_PEER_ADDR_PARAMS)
 // TODO: Cookie (SCTP_ASSOCINFO)
 // TODO: Auth and SPA (WriteMsgSpa, WriteMsgSpaExt, Read equivalents)
