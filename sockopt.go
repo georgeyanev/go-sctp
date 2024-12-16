@@ -202,7 +202,7 @@ func (fd *sctpFD) status() (*Status, error) {
 	}
 	const SCTP_STATUS int = 14
 	type peerAddrInfo struct {
-		assocID int32
+		assocId int32
 		addr    [128]byte // sizeof(sockaddr_storage)
 		state   int32
 		cwnd    uint32
@@ -211,7 +211,7 @@ func (fd *sctpFD) status() (*Status, error) {
 		mtu     uint32
 	}
 	type sctpStatus struct {
-		assocID            int32
+		assocId            int32
 		state              int32
 		rwnd               uint32
 		unackData          uint16
@@ -241,7 +241,7 @@ func (fd *sctpFD) status() (*Status, error) {
 	}
 
 	return &Status{
-		AssocID:            rawParam.assocID,
+		AssocId:            rawParam.assocId,
 		State:              rawParam.state,
 		Rwnd:               rawParam.rwnd,
 		UnackData:          rawParam.unackData,
@@ -250,7 +250,7 @@ func (fd *sctpFD) status() (*Status, error) {
 		OutStreams:         rawParam.outStreams,
 		FragmentationPoint: rawParam.fragmentationPoint,
 		PrimaryAddrInfo: &PeerAddrInfo{
-			AssocID: rawParam.primaryAddrInfo.assocID,
+			AssocId: rawParam.primaryAddrInfo.assocId,
 			Addr:    sctpAddr,
 			State:   rawParam.primaryAddrInfo.state,
 			Cwnd:    rawParam.primaryAddrInfo.cwnd,

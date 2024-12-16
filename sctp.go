@@ -73,8 +73,8 @@ type SndInfo struct {
 	// retrieved with each undelivered message
 	Context uint32
 
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 }
 
 // SndInfo flags
@@ -141,8 +141,8 @@ type RcvInfo struct {
 	// of a message and is retrieved with each undelivered message.
 	Context uint32
 
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 }
 
 // Status structure holds current status information about an
@@ -150,8 +150,8 @@ type RcvInfo struct {
 // number of unacknowledged DATA chunks, and number of DATA chunks
 // pending receipt.
 type Status struct {
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 
 	// Contains the association's current state, i.e.,
 	// one of the values defined in Status state values.
@@ -196,8 +196,8 @@ const (
 // of an association, including its reachability state, congestion
 // window, and retransmission timer values.
 type PeerAddrInfo struct {
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 
 	// This is filled by the application and contains the
 	// peer address of interest.

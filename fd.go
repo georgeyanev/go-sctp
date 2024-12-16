@@ -201,7 +201,7 @@ func (fd *sctpFD) writeMsg(b []byte, info *SndInfo, to *net.IPAddr, flags int) (
 			Flags:   info.Flags,
 			Ppid:    Htonui32(info.Ppid), // convert to network byte order
 			Context: info.Context,
-			AssocID: info.AssocID,
+			AssocId: info.AssocId,
 		}
 	}
 	var err error
