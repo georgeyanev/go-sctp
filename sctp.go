@@ -12,12 +12,12 @@ import (
 
 // flags set upon calling ReadMsg in recvFlags
 const (
-	// SCTP_NOTIFICATION indicated that the received message is
+	// SCTP_NOTIFICATION indicates that the received message is
 	// an SCTP event and not a data message
 	SCTP_NOTIFICATION = 0x8000
 
 	// SCTP_EOR indicates the end of a message (End Of Record).
-	// See ReadMsg for more details
+	// See SCTPConn.ReadMsg for more details
 	SCTP_EOR = unix.MSG_EOR
 )
 
@@ -53,6 +53,7 @@ type InitOptions struct {
 }
 
 // SndInfo structure specifies SCTP options for sending SCTP messages
+// Used in SCTPConn.WriteMsg functions
 type SndInfo struct {
 	// Sid value holds the stream number to which the application
 	// wishes to send this message.  If a sender specifies an invalid
@@ -72,8 +73,8 @@ type SndInfo struct {
 	// retrieved with each undelivered message
 	Context uint32
 
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 }
 
 // SndInfo flags
@@ -105,6 +106,7 @@ const (
 )
 
 // RcvInfo structure describes SCTP receive information about a received message
+// RcvInfo is returned by SCTPConn.ReadMsg function
 type RcvInfo struct {
 	// The SCTP stack places the message's stream number in this value.
 	Sid uint16
@@ -139,14 +141,102 @@ type RcvInfo struct {
 	// of a message and is retrieved with each undelivered message.
 	Context uint32
 
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 }
 
-// TODO: Add readme
-// TODO: Test partial read
-// TODO: Get Assoc Status (SCTP_STATUS)
-// TODO: Test on different architectures
+// Status structure holds current status information about an
+// association, including association state, peer receiver window size,
+// number of unacknowledged DATA chunks, and number of DATA chunks
+// pending receipt.
+type Status struct {
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
+
+	// Contains the association's current state, i.e.,
+	// one of the values defined in Status state values.
+	State int32
+
+	// Contains the association peer's current receiver window size.
+	Rwnd uint32
+
+	// Number of unacknowledged DATA chunks.
+	UnackData uint16
+
+	// Number of DATA chunks pending receipt.
+	PendingData uint16
+
+	// Number of streams that the peer will be using outbound.
+	InStreams uint16
+
+	// Number of outbound streams that the endpoint is allowed to use.
+	OutStreams uint16
+
+	// The size at which SCTP fragmentation will occur.
+	FragmentationPoint uint32
+
+	// Information on the current primary peer address.
+	PrimaryAddrInfo *PeerAddrInfo
+}
+
+// Status state values
+const (
+	SCTP_EMPTY             = 0
+	SCTP_CLOSED            = 1
+	SCTP_COOKIE_WAIT       = 2
+	SCTP_COOKIE_ECHOED     = 3
+	SCTP_ESTABLISHED       = 4
+	SCTP_SHUTDOWN_PENDING  = 5
+	SCTP_SHUTDOWN_SENT     = 6
+	SCTP_SHUTDOWN_RECEIVED = 7
+	SCTP_SHUTDOWN_ACK_SENT = 8
+)
+
+// PeerAddrInfo contains information about a specific peer address
+// of an association, including its reachability state, congestion
+// window, and retransmission timer values.
+type PeerAddrInfo struct {
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
+
+	// This is filled by the application and contains the
+	// peer address of interest.
+	Addr *SCTPAddr
+
+	// Contains the peer address's state. See PeerAddrInfo state values
+	State int32
+
+	// Contains the peer address's current congestion window.
+	Cwnd uint32
+
+	// Contains the peer address's current smoothed
+	// round-trip time calculation in milliseconds.
+	Srtt uint32
+
+	// Contains the peer address's current retransmission
+	// timeout value in milliseconds.
+	Rto uint32
+
+	// Contains the current Path MTU of the peer address.  It is
+	// the number of bytes available in an SCTP packet for chunks.
+	Mtu uint32
+}
+
+// PeerAddrInfo state values
+const (
+	// SCTP_UNCONFIRMED is the initial state of a peer address.
+	SCTP_UNCONFIRMED = 3
+
+	// SCTP_ACTIVE state is entered the first time after path
+	// verification.  It can also be entered if the state is
+	// SCTP_INACTIVE and the path supervision detects that the peer
+	// address is reachable again.
+	SCTP_ACTIVE = 2
+
+	// SCTP_INACTIVE state is entered whenever a path failure is detected.
+	SCTP_INACTIVE = 0
+)
+
 // TODO: Add heartbeat management (SCTP_PEER_ADDR_PARAMS)
 // TODO: Cookie (SCTP_ASSOCINFO)
 // TODO: Auth and SPA (WriteMsgSpa, WriteMsgSpaExt, Read equivalents)

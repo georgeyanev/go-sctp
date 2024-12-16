@@ -106,10 +106,13 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 //
 // ReadMsg returns:
 //
-//	n: number of bytes read and stored into b
-//	rcvInfo: information about the received message
-//	recvFlags: received message flags (i.e. SCTP_NOTIFICATION, SCTP_EOR)
-//	err: error
+// n: number of bytes read and stored into b
+// rcvInfo: information about the received message
+// recvFlags: received message flags (i.e. SCTP_NOTIFICATION, SCTP_EOR)
+// err: error
+//
+// Since os.File is used for integration with the poller, os.ErrClosed
+// should be checked instead of net.ErrClosed.
 func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
 	if !c.ok() {
 		return 0, nil, 0, unix.EINVAL
@@ -141,8 +144,10 @@ func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
 // caller provides an SndInfo struct with the Flags field set to
 // SCTP_EOF.
 //
-// WriteMsg returns the number of bytes accepted by the kernel or an
+// WriteMsgExt returns the number of bytes accepted by the kernel or an
 // error in case of any.
+// Since os.File is used for integration with the poller, os.ErrClosed
+// should be checked instead of net.ErrClosed.
 //
 // If the caller finds the default behavior reasonable, the function
 // SCTPConn.Write can be used instead.
@@ -213,17 +218,6 @@ func (c *SCTPConn) SetNoDelay(noDelay bool) error {
 	return nil
 }
 
-func (c *SCTPConn) GetNoDelay() (bool, error) {
-	if !c.ok() {
-		return false, unix.EINVAL
-	}
-	b, err := c.fd.getNoDelay()
-	if err != nil {
-		return false, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
-	}
-	return b, nil
-}
-
 // SetDisableFragments turns an on/off flag. If enabled, no SCTP message
 // fragmentation will be performed. The effect of enabling this option
 // is that if a message being sent exceeds the current Path MTU (PMTU)
@@ -241,35 +235,24 @@ func (c *SCTPConn) SetDisableFragments(disableFragments bool) error {
 	return nil
 }
 
-func (c *SCTPConn) GetDisableFragments() (bool, error) {
-	if !c.ok() {
-		return false, unix.EINVAL
-	}
-	b, err := c.fd.getDisableFragments()
-	if err != nil {
-		return false, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
-	}
-	return b, nil
-}
-
-// GetWriteBuffer returns the current socket's  write buffer size in bytes.
-func (c *SCTPConn) GetWriteBuffer() (int, error) {
+// WriteBuffer returns the current socket's  write buffer size in bytes.
+func (c *SCTPConn) WriteBuffer() (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
 	}
-	sbSize, err := c.fd.getWriteBuffer()
+	sbSize, err := c.fd.writeBuffer()
 	if err != nil {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
 	return sbSize, nil
 }
 
-// GetReadBuffer returns the current socket's read buffer size in bytes.
-func (c *SCTPConn) GetReadBuffer() (int, error) {
+// ReadBuffer returns the current socket's read buffer size in bytes.
+func (c *SCTPConn) ReadBuffer() (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
 	}
-	sbSize, err := c.fd.getReadBuffer()
+	sbSize, err := c.fd.readBuffer()
 	if err != nil {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
@@ -344,6 +327,18 @@ func (c *SCTPConn) CloseWrite() error {
 		return &net.OpError{Op: "close", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
 	return nil
+}
+
+// Status returns the current status of the SCTP association.
+func (c *SCTPConn) Status() (*Status, error) {
+	if !c.ok() {
+		return nil, unix.EINVAL
+	}
+	sctpStatus, err := c.fd.status()
+	if err != nil {
+		return nil, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return sctpStatus, nil
 }
 
 func newSCTPConn(fd *sctpFD) *SCTPConn {

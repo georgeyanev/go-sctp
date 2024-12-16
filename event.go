@@ -56,8 +56,8 @@ type AssocChangeEvent struct {
 	// Maximum number of inbound streams
 	InboundStreams uint16
 
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 
 	// Additional information. See [RFC6458]#section-6.1.1
 	Info []byte
@@ -109,8 +109,8 @@ type PeerAddrChangeEvent struct {
 	// available in this field
 	Error uint32
 
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 }
 
 // SCTP_PEER_ADDR_CHANGE state
@@ -149,8 +149,8 @@ func (*PeerAddrChangeEvent) Flags() int { return 0 }
 type RemoteErrorEvent struct {
 	Error uint16
 
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 
 	// This contains the ERROR chunk as defined in Section 3.3.10
 	// of the SCTP specification [RFC4960].
@@ -165,8 +165,8 @@ func (*RemoteErrorEvent) Flags() int { return 0 }
 // ShutdownEvent is received to inform the application
 // that it should cease sending data.
 type ShutdownEvent struct {
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 }
 
 func (*ShutdownEvent) Type() EventType { return SCTP_SHUTDOWN_EVENT }
@@ -182,8 +182,8 @@ type AdaptationEvent struct {
 	// in the Adaptation Layer Indication parameter
 	AdaptationInd uint32
 
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 }
 
 func (*AdaptationEvent) Type() EventType { return SCTP_ADAPTATION_INDICATION }
@@ -214,8 +214,8 @@ type SendFailedEvent struct {
 	// means that the tail end of the message is returned in ssf_data.
 	SfeSndInfo SndInfo
 
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 
 	// The undelivered message or part of the undelivered
 	// message will be present in the ssf_data field. Note that the
@@ -260,8 +260,8 @@ type eventHeader struct {
 // if there is no data to be sent or retransmit, the stack
 // will immediately send up this notification.
 type SenderDryEvent struct {
-	// Association ID is ignored in one-to-one mode
-	AssocID int32
+	// Association Id is ignored in one-to-one mode
+	AssocId int32
 }
 
 func (*SenderDryEvent) Type() EventType { return SCTP_SENDER_DRY_EVENT }
@@ -313,7 +313,7 @@ func parseAssocChangeEvent(b []byte) (*AssocChangeEvent, error) {
 		error           uint16
 		outboundStreams uint16
 		inboundStreams  uint16
-		assocID         int32
+		assocId         int32
 	}
 	if len(b) < int(unsafe.Sizeof(assocChangeEvent{})) {
 		return nil, errors.New("assocChangeEvent event too short")
@@ -326,7 +326,7 @@ func parseAssocChangeEvent(b []byte) (*AssocChangeEvent, error) {
 		Error:           ace.error,
 		OutboundStreams: ace.outboundStreams,
 		InboundStreams:  ace.inboundStreams,
-		AssocID:         ace.assocID,
+		AssocId:         ace.assocId,
 		Info:            b[sizeOfAce:],
 	}, nil
 }
@@ -337,7 +337,7 @@ func parsePeerAddrChangeEvent(b []byte) (*PeerAddrChangeEvent, error) {
 		addr    [128]byte // sizeof(sockaddr_storage)
 		state   uint32
 		error   uint32
-		assocID int32
+		assocId int32
 	}
 	if len(b) < int(unsafe.Sizeof(peerAddrChangeEvent{})) {
 		return nil, errors.New("peerAddrChangeEvent event too short")
@@ -352,7 +352,7 @@ func parsePeerAddrChangeEvent(b []byte) (*PeerAddrChangeEvent, error) {
 		Addr:    sctpAddr.IPAddrs[0],
 		State:   pace.state,
 		Error:   pace.error,
-		AssocID: pace.assocID,
+		AssocId: pace.assocId,
 	}, nil
 }
 
@@ -361,7 +361,7 @@ func parseRemoteErrorEvent(b []byte) (Event, error) {
 		eventHeader
 		error   uint16
 		_       uint16 // explicit padding
-		assocID int32
+		assocId int32
 	}
 	if len(b) < int(unsafe.Sizeof(remoteErrorEvent{})) {
 		return nil, errors.New("remoteErrorEvent event too short")
@@ -376,7 +376,7 @@ func parseRemoteErrorEvent(b []byte) (Event, error) {
 	sizeOfRee := unsafe.Sizeof(remoteErrorEvent{})
 	return &RemoteErrorEvent{
 		Error:   uint16(eHost),
-		AssocID: ree.assocID,
+		AssocId: ree.assocId,
 		Data:    b[sizeOfRee:],
 	}, nil
 }
@@ -384,7 +384,7 @@ func parseRemoteErrorEvent(b []byte) (Event, error) {
 func parseShutdownEvent(b []byte) (Event, error) {
 	type shutdownEvent struct {
 		eventHeader
-		assocID int32
+		assocId int32
 	}
 	if len(b) < int(unsafe.Sizeof(shutdownEvent{})) {
 		return nil, errors.New("shutdownEvent event too short")
@@ -392,7 +392,7 @@ func parseShutdownEvent(b []byte) (Event, error) {
 
 	se := (*shutdownEvent)(unsafe.Pointer(&b[0]))
 	return &ShutdownEvent{
-		AssocID: se.assocID,
+		AssocId: se.assocId,
 	}, nil
 }
 
@@ -400,7 +400,7 @@ func parseAdaptationEvent(b []byte) (Event, error) {
 	type adaptationEvent struct {
 		eventHeader
 		adaptationInd uint32
-		assocID       int32
+		assocId       int32
 	}
 	if len(b) < int(unsafe.Sizeof(adaptationEvent{})) {
 		return nil, errors.New("adaptationEvent event too short")
@@ -409,7 +409,7 @@ func parseAdaptationEvent(b []byte) (Event, error) {
 	se := (*adaptationEvent)(unsafe.Pointer(&b[0]))
 	return &AdaptationEvent{
 		AdaptationInd: se.adaptationInd,
-		AssocID:       se.assocID,
+		AssocId:       se.assocId,
 	}, nil
 }
 
@@ -418,7 +418,7 @@ func parseSendFailedEvent(b []byte) (Event, error) {
 		eventHeader
 		error      uint32
 		sfeSndInfo SndInfo
-		assocID    int32
+		assocId    int32
 	}
 	if len(b) < int(unsafe.Sizeof(sendFailedEvent{})) {
 		return nil, errors.New("sendFailedEvent event too short")
@@ -430,7 +430,7 @@ func parseSendFailedEvent(b []byte) (Event, error) {
 		SfeFlags:   sfe.snFlags,
 		Error:      sfe.error,
 		SfeSndInfo: sfe.sfeSndInfo,
-		AssocID:    sfe.assocID,
+		AssocId:    sfe.assocId,
 		Data:       b[sizeOfSfe:],
 	}, nil
 }
@@ -438,7 +438,7 @@ func parseSendFailedEvent(b []byte) (Event, error) {
 func parseSenderDryEvent(b []byte) (Event, error) {
 	type senderDryEvent struct {
 		eventHeader
-		assocID int32
+		assocId int32
 	}
 	if len(b) < int(unsafe.Sizeof(senderDryEvent{})) {
 		return nil, errors.New("senderDryEvent event too short")
@@ -446,6 +446,6 @@ func parseSenderDryEvent(b []byte) (Event, error) {
 
 	se := (*senderDryEvent)(unsafe.Pointer(&b[0]))
 	return &SenderDryEvent{
-		AssocID: se.assocID,
+		AssocId: se.assocId,
 	}, nil
 }

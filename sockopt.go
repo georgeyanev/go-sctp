@@ -98,23 +98,66 @@ func setInitOptions(fd int, initOptions InitOptions) error {
 	return nil
 }
 
-func (fd *sctpFD) getNoDelay() (bool, error) {
+func (fd *sctpFD) retrieveAddr(optName int) (*SCTPAddr, error) {
 	if !fd.initialized() {
-		return false, unix.EINVAL
+		return nil, unix.EINVAL
 	}
 
+	// SCTP_ADDRS_BUF_SIZE is the allocated buffer for system calls returning local/remote sctp multi-homed addresses
+	const SCTP_ADDRS_BUF_SIZE int = 4096 //enough for most cases
+
+	type rawSctpAddrs struct {
+		assocId int32
+		addrNum uint32
+		addrs   [SCTP_ADDRS_BUF_SIZE]byte
+	}
+	rawParam := rawSctpAddrs{} // to be filled by the getsockopt call
+
 	var err error
-	var optVal int
+	rawParamBuf := unsafe.Slice((*byte)(unsafe.Pointer(&rawParam)), unsafe.Sizeof(rawParam))
 	doErr := fd.rc.Control(func(fd uintptr) {
-		optVal, err = unix.GetsockoptInt(int(fd), unix.IPPROTO_SCTP, _SCTP_NODELAY)
+		err = getsockoptBytes(int(fd), unix.IPPROTO_SCTP, optName, rawParamBuf)
 	})
 	if doErr != nil {
-		return false, doErr
+		return nil, doErr
 	}
 	if err != nil {
-		return false, os.NewSyscallError("getsockopt", err)
+		return nil, os.NewSyscallError("getsockopt", err)
 	}
-	return intbool(optVal), nil
+
+	sctpAddr, err := fromSockaddrBuff(rawParam.addrs[:], int(rawParam.addrNum))
+	if err != nil {
+		return nil, err
+	}
+
+	return sctpAddr, nil
+}
+
+func (fd *sctpFD) subscribe(event EventType, enabled bool) error {
+	if !fd.initialized() {
+		return unix.EINVAL
+	}
+	const SCTP_EVENT = 127
+	type sctpEventType struct {
+		_      int32
+		seType uint16
+		seOn   uint8
+	}
+
+	sctpEvent := sctpEventType{seType: uint16(event), seOn: uint8(boolint(enabled))}
+	sctpEventBuf := unsafe.Slice((*byte)(unsafe.Pointer(&sctpEvent)), unsafe.Sizeof(sctpEvent))
+
+	var err error
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = unix.SetsockoptString(int(fd), unix.IPPROTO_SCTP, SCTP_EVENT, string(sctpEventBuf))
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
+	return nil
 }
 
 func (fd *sctpFD) setNoDelay(b bool) error {
@@ -135,25 +178,6 @@ func (fd *sctpFD) setNoDelay(b bool) error {
 	return nil
 }
 
-func (fd *sctpFD) getDisableFragments() (bool, error) {
-	if !fd.initialized() {
-		return false, unix.EINVAL
-	}
-
-	var err error
-	var optVal int
-	doErr := fd.rc.Control(func(fd uintptr) {
-		optVal, err = unix.GetsockoptInt(int(fd), unix.IPPROTO_SCTP, _SCTP_DISABLE_FRAGMENTS)
-	})
-	if doErr != nil {
-		return false, doErr
-	}
-	if err != nil {
-		return false, os.NewSyscallError("getsockopt", err)
-	}
-	return intbool(optVal), nil
-}
-
 func (fd *sctpFD) setDisableFragments(b bool) error {
 	if !fd.initialized() {
 		return unix.EINVAL
@@ -172,7 +196,7 @@ func (fd *sctpFD) setDisableFragments(b bool) error {
 	return nil
 }
 
-func (fd *sctpFD) getWriteBuffer() (int, error) {
+func (fd *sctpFD) writeBuffer() (int, error) {
 	if !fd.initialized() {
 		return 0, unix.EINVAL
 	}
@@ -190,7 +214,7 @@ func (fd *sctpFD) getWriteBuffer() (int, error) {
 	return sndBuf, nil
 }
 
-func (fd *sctpFD) getReadBuffer() (int, error) {
+func (fd *sctpFD) readBuffer() (int, error) {
 	if !fd.initialized() {
 		return 0, unix.EINVAL
 	}
@@ -209,6 +233,9 @@ func (fd *sctpFD) getReadBuffer() (int, error) {
 }
 
 func (fd *sctpFD) setLinger(sec int) error {
+	if !fd.initialized() {
+		return unix.EINVAL
+	}
 	var l unix.Linger
 	if sec >= 0 {
 		l.Onoff = 1
@@ -231,11 +258,77 @@ func (fd *sctpFD) setLinger(sec int) error {
 	return nil
 }
 
+func (fd *sctpFD) status() (*Status, error) {
+	if !fd.initialized() {
+		return nil, unix.EINVAL
+	}
+	const SCTP_STATUS int = 14
+	type peerAddrInfo struct {
+		assocId int32
+		addr    [128]byte // sizeof(sockaddr_storage)
+		state   int32
+		cwnd    uint32
+		srtt    uint32
+		rto     uint32
+		mtu     uint32
+	}
+	type sctpStatus struct {
+		assocId            int32
+		state              int32
+		rwnd               uint32
+		unackData          uint16
+		pendingData        uint16
+		inStreams          uint16
+		outStreams         uint16
+		fragmentationPoint uint32
+		primaryAddrInfo    peerAddrInfo
+	}
+	rawParam := sctpStatus{} // to be filled by the getsockopt call
+
+	var err error
+	rawParamBuf := unsafe.Slice((*byte)(unsafe.Pointer(&rawParam)), unsafe.Sizeof(rawParam))
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = getsockoptBytes(int(fd), unix.IPPROTO_SCTP, SCTP_STATUS, rawParamBuf)
+	})
+	if doErr != nil {
+		return nil, doErr
+	}
+	if err != nil {
+		return nil, os.NewSyscallError("getsockopt", err)
+	}
+
+	sctpAddr, err := fromSockaddrBuff(rawParam.primaryAddrInfo.addr[:], 1)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Status{
+		AssocId:            rawParam.assocId,
+		State:              rawParam.state,
+		Rwnd:               rawParam.rwnd,
+		UnackData:          rawParam.unackData,
+		PendingData:        rawParam.pendingData,
+		InStreams:          rawParam.inStreams,
+		OutStreams:         rawParam.outStreams,
+		FragmentationPoint: rawParam.fragmentationPoint,
+		PrimaryAddrInfo: &PeerAddrInfo{
+			AssocId: rawParam.primaryAddrInfo.assocId,
+			Addr:    sctpAddr,
+			State:   rawParam.primaryAddrInfo.state,
+			Cwnd:    rawParam.primaryAddrInfo.cwnd,
+			Srtt:    rawParam.primaryAddrInfo.srtt,
+			Rto:     rawParam.primaryAddrInfo.rto,
+			Mtu:     rawParam.primaryAddrInfo.mtu,
+		},
+	}, nil
+}
+
 func getsockoptBytes(fd, level, opt int, b []byte) error {
 	p := unsafe.Pointer(&b[0])
 	vallen := uint32(len(b))
 
-	if runtime.GOARCH == "s390x" || runtime.GOARCH == "386" {
+	switch runtime.GOARCH {
+	case "s390x", "386":
 		const (
 			SYS_SOCKETCALL = 102
 			_GETSOCKOPT    = 15
@@ -247,17 +340,9 @@ func getsockoptBytes(fd, level, opt int, b []byte) error {
 		}
 		return nil
 	}
-
 	_, _, err := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), uintptr(level), uintptr(opt), uintptr(p), uintptr(unsafe.Pointer(&vallen)), 0)
 	if err != 0 {
 		return err
 	}
 	return nil
-}
-
-func intbool(i int) bool {
-	if i == 0 {
-		return false
-	}
-	return true
 }

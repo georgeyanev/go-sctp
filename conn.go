@@ -27,15 +27,16 @@ type conn struct {
 // cannot distinguish the different streams. This may result in data
 // seeming to arrive out of order. Similarly, if a DATA chunk is sent
 // unordered, Read() provide no indication.
-//
 // If the buffer supplied is not large enough to hold a
 // complete SCTP message, the Read call acts like a stream socket and
 // returns as much data as will fit in the buffer.
 //
 // Read cannot distinguish message boundaries (i.e., there is no way
 // to observe the MSG_EOR flag to detect partial delivery)
+// Since os.File is used for integration with the poller, os.ErrClosed
+// should be checked instead of net.ErrClosed.
 //
-// If you want specific SCTP features, use the ReadMsg() functions.
+// If specific SCTP features are needed, use SCTPConn.ReadMsg.
 func (c *conn) Read(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
@@ -61,7 +62,10 @@ func (c *conn) Read(b []byte) (int, error) {
 // the write buffer size of the socket.
 // See: https://datatracker.ietf.org/doc/html/rfc6458#page-67
 //
-// If you want specific SCTP features, use the WriteMsg() functions.
+// Write return errors from `os` package so check for os.ErrClosed instead
+// of net.ErrClosed.
+//
+// If specific SCTP features are needed, use SCTPConn.WriteMsg.
 func (c *conn) Write(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
@@ -110,8 +114,7 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 // By default, a graceful close is performed and
 // a SHUTDOWN message is sent to the peer.
 // If different behaviour is desired (i.e. immediate
-// close and sending ABORT chunk), use the SCTPConn.SetLinger
-// function.
+// close and sending ABORT chunk), use SCTPConn.SetLinger
 // Also, different close behaviour can be achieved by using
 // the SndInfo flags appropriately.
 func (c *conn) Close() error {
