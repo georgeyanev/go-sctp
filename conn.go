@@ -36,7 +36,8 @@ type conn struct {
 // Since os.File is used for integration with the poller, os.ErrClosed
 // should be checked instead of net.ErrClosed.
 //
-// If specific SCTP features are needed, use SCTPConn.ReadMsg.
+// If specific SCTP features are needed, SCTPConn.ReadMsg function
+// can be used.
 func (c *conn) Read(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
@@ -54,7 +55,7 @@ func (c *conn) Read(b []byte) (int, error) {
 // Write do not allow the caller to specify on which stream a
 // message should be sent. The system uses stream 0 as the default
 // stream.
-// SCTP is message based. The msg buffer above in Write
+// SCTP is message based. The msg buffer passed in Write
 // is considered to be a single message.
 //
 // Sending a message using Write is atomic.
@@ -63,9 +64,10 @@ func (c *conn) Read(b []byte) (int, error) {
 // See: https://datatracker.ietf.org/doc/html/rfc6458#page-67
 //
 // Write return errors from `os` package so check for os.ErrClosed instead
-// of net.ErrClosed.
+// of net.ErrClosed for closure detection.
 //
-// If specific SCTP features are needed, use SCTPConn.WriteMsg.
+// If specific SCTP features are needed, the SCTPConn.WriteMsg function
+// can be used.
 func (c *conn) Write(b []byte) (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL

@@ -23,18 +23,18 @@ const (
 
 // InitOptions structure provides information for initializing new SCTP associations
 type InitOptions struct {
-	// number of streams to which the application wishes to be able to send, 10 by default
+	// Number of streams to which the application wishes to be able to send, 10 by default
 	NumOstreams uint16
-	// maximum number of inbound streams the application is prepared to support, 10 by default
+	// Maximum number of inbound streams the application is prepared to support, 10 by default
 	MaxInstreams uint16
-	// how many attempts the SCTP endpoint should make at resending the INIT
+	// How many attempts the SCTP endpoint should make at resending the INIT
 	// if not specified the kernel parameter net.sctp.max_init_retransmits is used as default
 	MaxAttempts uint16
-	// largest timeout or retransmission timeout (RTO) value (in milliseconds) to use in attempting an INIT
+	// Largest timeout or retransmission timeout (RTO) value (in milliseconds) to use in attempting an INIT
 	// if not specified the kernel parameter net.sctp.rto_max is used as default
 	MaxInitTimeout uint16
 
-	// Default values for read and write buffers is 512K (usually the linux kernel doubles this value)
+	// Default value for read and write buffers is 512K (usually the linux kernel doubles this value)
 	// Note that buffer sizes are limited by the kernel parameters `net.core.rmem_max` and `net.core.wmem_max`
 	// unless we run as a privileged user
 	SocketReadBufferSize  int
@@ -60,7 +60,7 @@ type SndInfo struct {
 	// stream number, an error indication is returned and the call fails
 	Sid uint16
 
-	// Flags:  This field is composed of a bitwise OR of the values
+	// Flags field is composed of a bitwise OR of the values
 	// defined in SndInfo flags
 	Flags uint16
 

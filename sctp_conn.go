@@ -53,7 +53,7 @@ func (c *SCTPConn) BindAddSCTP(laddr *SCTPAddr) error {
 	return nil
 }
 
-// BindRemove remove some addresses with which a bound socket is associated.
+// BindRemove removes some addresses with which a bound socket is associated.
 // If the endpoint supports dynamic address reconfiguration, BindRemove may cause an
 // endpoint to send the appropriate message to its peer to change the peer's address lists.
 //
@@ -88,31 +88,35 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 	return nil
 }
 
-// ReadMsg reads a message from socket and stores it into 'b'.
+// ReadMsg reads a message from the socket and stores it into 'b'.
 // If there is no room for the message in b, ReadMsg fills b with part
 // of the message and clears SCTP_EOR flag in recvFlags. The rest of the message
-// should be retrieved using subsequent calls to ReadMsg the last one having
+// should be retrieved using subsequent calls to ReadMsg, the last one having
 // SCTP_EOR set.
-// The message stored in 'b' can be a regular message or a notification(event) message.
-// Notifications will be returned only if and after Subscribe is called.
-// If the message is a notification, the SCTP_NOTIFICATION flag will be set in recvFlags.
-// A ReadMsg() call will return only one notification at a time.  Just
+// The message stored in 'b' can be a regular message or a notification(event)
+// message. Notifications are returned only if Subscribe has been called prior
+// to reading the message. If the message is a notification, the SCTP_NOTIFICATION
+// flag will be set in recvFlags.
+// A ReadMsg call will return only one notification at a time.  Just
 // as when reading normal data, it may return part of a notification if
-// the buffer passed is not large enough.  If a single read is not
-// sufficient, recvFlags will have SCTP_EOR clear. The user must finish
-// reading the notification before subsequent data can arrive.
-// The notification message can later be parsed with ParseEvent function given
-// that the argument passed to it is a whole message (not part of it).
+// the buffer passed is not large enough. If a single read is not
+// sufficient, recvFlags will have SCTP_EOR unset, indicating the need for further
+// reads to complete the notification retrieval.
+// The notification message can later be parsed with ParseEvent function
+// once a complete message has been obtained.
 //
 // ReadMsg returns:
 //
-// n: number of bytes read and stored into b
-// rcvInfo: information about the received message
-// recvFlags: received message flags (i.e. SCTP_NOTIFICATION, SCTP_EOR)
-// err: error
+// n: Number of bytes read and stored into b.
+// rcvInfo: Information about the received message.
+// recvFlags: Received message flags (i.e. SCTP_NOTIFICATION, SCTP_EOR).
+// err: Error encountered during reading, if any.
 //
 // Since os.File is used for integration with the poller, os.ErrClosed
 // should be checked instead of net.ErrClosed.
+//
+// If the default functionality meets the caller's needs, the SCTPConn.Read
+// function may be used as a simpler alternative.
 func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
 	if !c.ok() {
 		return 0, nil, 0, unix.EINVAL
@@ -134,8 +138,8 @@ func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
 // with user data.  When sending, the ancillary data is used to
 // specify the send behavior, such as the SCTP stream number to use
 // or the protocol payload identifier (Ppid). These are specified in
-// the SndInfo struct. SndInfo argument which is optional. If it is null
-// the data is sent on stream number 0.
+// the SndInfo struct, which is optional. If SndInfo is null
+// the data is sent on stream number 0 by default.
 // If the caller wants to send the message to a specific peer address
 // (hence overriding the primary address), it can provide the specific
 // address in the `to` argument.
@@ -147,10 +151,10 @@ func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
 // WriteMsgExt returns the number of bytes accepted by the kernel or an
 // error in case of any.
 // Since os.File is used for integration with the poller, os.ErrClosed
-// should be checked instead of net.ErrClosed.
+// should be checked instead of net.ErrClosed for closure detection.
 //
-// If the caller finds the default behavior reasonable, the function
-// SCTPConn.Write can be used instead.
+// If the default functionality meets the caller's needs, the SCTPConn.Write
+// function may be used as a simpler alternative.
 func (c *SCTPConn) WriteMsgExt(b []byte, info *SndInfo, to *net.IPAddr, flags int) (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
