@@ -614,6 +614,13 @@ func TestSenderDryEvent(t *testing.T) {
 			errorChan <- errors.New("expected equal 'hello', got: " + string(b[:n]))
 			return
 		}
+
+		// read EOF
+		n, _, _, err1 = c.(*SCTPConn).ReadMsg(b)
+		if err1 != nil && err1 != io.EOF {
+			errorChan <- err1
+			return
+		}
 	}()
 
 	var d = Dialer{
@@ -635,8 +642,8 @@ func TestSenderDryEvent(t *testing.T) {
 	}
 
 	b := make([]byte, 256)
-	n, _, recvFlags, err1 := c1.ReadMsg(b)
-	if err1 != nil {
+	n, _, recvFlags, err := c1.ReadMsg(b)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -657,7 +664,7 @@ func TestSenderDryEvent(t *testing.T) {
 		t.Fatal(errors.New("expected SenderDryEvent"))
 	}
 
-	c.Close() // sends SCTP_SHUTDOWN_EVENT
+	c.Close()
 	select {
 	case <-closeChan:
 	case err = <-errorChan:

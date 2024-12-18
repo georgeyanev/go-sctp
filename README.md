@@ -1,5 +1,7 @@
 # SCTP for Go
 
+[![Go Tests](https://github.com/georgeyanev/go-sctp/actions/workflows/test.yml/badge.svg)](https://github.com/georgeyanev/go-sctp/actions/workflows/test.yml)
+
 **`go-sctp`** is a Golang package that provides an efficient interface for working 
 with the **Stream Control Transmission Protocol (SCTP)**.
 SCTP support in the Go ecosystem has been sparse and **`go-sctp`** aims to fill this gap. It offers high-level abstractions 
