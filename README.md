@@ -22,6 +22,29 @@ Well-structured and comprehensive documentation is prioritized as part of the de
 
 ---
 
+## Features
+
+  - Support for one-to-one SCTP mode (SOCK_STREAM socket type)
+  - Use of non-blocking sockets
+  - Integration with go's runtime network poller through os.File
+  - Dial, Listen, Accept functionality following Go's TCP implementation logic
+  - Basic SCTP read and write through SCTPConn.Read and SCTPConn.Write
+  - Enhanced SCTP read and write through SCTPConn.ReadMsg and SCTPConn.WriteMsg
+  - Deadline support for read/write/accept operations
+  - Multi-streaming support through sctp.SndInfo and sctp.RcvInfo structures
+  - Multi-homing support embedded in SCTPAddr
+  - SCTP Notifications support
+  - Exported socket options (i.e. SCTP_ADAPTATION_LAYER, SCTP_DISABLE_FRAGMENTS)
+  - Runtime re-binding support through BindAdd and BindRemove
+  - Shutdown and Abort support
+  - Most of the TCP tests in Go's net package applied here to SCTP
+  - Well documented
+
+For a complete list of features and the history of changes introduced in each version, refer to the
+[CHANGELOG.md](https://github.com/georgeyanev/go-sctp/blob/master/CHANGELOG.md).
+
+---
+
 ## Getting
   ```
   go get -u github.com/georgeyanev/go-sctp
