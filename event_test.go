@@ -605,13 +605,17 @@ func TestSenderDryEvent(t *testing.T) {
 		b := make([]byte, 256)
 
 		// read data
-		n, _, _, err1 := c.(*SCTPConn).ReadMsg(b)
+		n, _, recvFlags, err1 := c.(*SCTPConn).ReadMsg(b)
 		if err1 != nil {
 			errorChan <- err1
 			return
 		}
 		if !bytes.Equal(b[:n], []byte("hello")) {
 			errorChan <- errors.New("expected equal 'hello', got: " + string(b[:n]))
+			return
+		}
+		if recvFlags&SCTP_CTRUNC == SCTP_CTRUNC {
+			errorChan <- errors.New("expected ancillary data not to be truncated")
 			return
 		}
 
