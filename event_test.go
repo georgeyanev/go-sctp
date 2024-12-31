@@ -667,7 +667,9 @@ func TestSenderDryEvent(t *testing.T) {
 	if !ok {
 		t.Fatal(errors.New("expected SenderDryEvent"))
 	}
-
+	if err = c1.Unsubscribe(SCTP_SENDER_DRY_EVENT); err != nil {
+		t.Fatal(err)
+	}
 	c.Close()
 	select {
 	case <-closeChan:

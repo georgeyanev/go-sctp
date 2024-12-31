@@ -168,6 +168,78 @@ func TestSCTPStatus(t *testing.T) {
 	}
 }
 
+func TestSockOpt(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	closeChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
+		c, err1 := ln1.Accept()
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		defer func(c net.Conn) {
+			c.Close()
+			close(closeChan)
+		}(c)
+
+		b := make([]byte, 256)
+		// read EOF
+		_, _, _, err1 = c.(*SCTPConn).ReadMsg(b)
+		if err1 != nil && err1 != io.EOF {
+			errorChan <- err1
+			return
+		}
+	}()
+
+	var d = Dialer{
+		LocalAddr: &SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IP{127, 0, 0, 1}}}},
+	}
+	c, err := d.Dial("sctp4", ln1.Addr().String())
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Dial: %s ------> %s", c.LocalAddr().String(), c.RemoteAddr().String())
+	c1 := c.(*SCTPConn)
+
+	if err = c1.SetDisableFragments(true); err != nil {
+		t.Fatal(err)
+	}
+
+	buffer, err := c1.ReadBufferSize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if buffer <= 0 {
+		t.Fatal(errors.New("expected non-zero read buffer size"))
+	}
+
+	buffer, err = c1.WriteBufferSize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if buffer <= 0 {
+		t.Fatal(errors.New("expected non-zero write buffer size"))
+	}
+
+	if _, err = c1.RefreshRemoteAddr(); err != nil {
+		t.Fatal(err)
+	}
+
+	c.Close()
+	select {
+	case <-closeChan:
+	case err = <-errorChan:
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestHtonui32Ntohui32(t *testing.T) {
 	var a uint32 = 0x01020304
 	b := Htonui32(Ntohui32(a))

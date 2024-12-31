@@ -196,7 +196,7 @@ func (fd *sctpFD) setDisableFragments(b bool) error {
 	return nil
 }
 
-func (fd *sctpFD) writeBuffer() (int, error) {
+func (fd *sctpFD) writeBufferSize() (int, error) {
 	if !fd.initialized() {
 		return 0, unix.EINVAL
 	}
@@ -214,7 +214,7 @@ func (fd *sctpFD) writeBuffer() (int, error) {
 	return sndBuf, nil
 }
 
-func (fd *sctpFD) readBuffer() (int, error) {
+func (fd *sctpFD) readBufferSize() (int, error) {
 	if !fd.initialized() {
 		return 0, unix.EINVAL
 	}

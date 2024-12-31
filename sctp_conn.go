@@ -249,24 +249,24 @@ func (c *SCTPConn) SetDisableFragments(disableFragments bool) error {
 	return nil
 }
 
-// WriteBuffer returns the current socket's  write buffer size in bytes.
-func (c *SCTPConn) WriteBuffer() (int, error) {
+// WriteBufferSize returns the current socket's  write buffer size in bytes.
+func (c *SCTPConn) WriteBufferSize() (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
 	}
-	sbSize, err := c.fd.writeBuffer()
+	sbSize, err := c.fd.writeBufferSize()
 	if err != nil {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
 	return sbSize, nil
 }
 
-// ReadBuffer returns the current socket's read buffer size in bytes.
-func (c *SCTPConn) ReadBuffer() (int, error) {
+// ReadBufferSize returns the current socket's read buffer size in bytes.
+func (c *SCTPConn) ReadBufferSize() (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
 	}
-	sbSize, err := c.fd.readBuffer()
+	sbSize, err := c.fd.readBufferSize()
 	if err != nil {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
