@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"testing"
+	"unsafe"
 )
 
 // Test AssocChange even
@@ -68,7 +69,14 @@ func TestAssocChangeEvent(t *testing.T) {
 			errorChan <- err1
 			return
 		}
-
+		if e.Flags() != 0 {
+			errorChan <- errors.New("expected flags == 0")
+			return
+		}
+		if e.Type() != SCTP_ASSOC_CHANGE {
+			errorChan <- errors.New("expected SCTP_ASSOC_CHANGE")
+			return
+		}
 		ace, ok := e.(*AssocChangeEvent)
 		if !ok {
 			errorChan <- errors.New("expected AssocChangeEvent")
@@ -95,6 +103,10 @@ func TestAssocChangeEvent(t *testing.T) {
 		}
 		if rcvInfo == nil {
 			errorChan <- errors.New("expected non-nil rcvInfo")
+			return
+		}
+		if rcvInfo.Ppid != 32000 {
+			errorChan <- fmt.Errorf("expected Ppid of 32000, got: %d", rcvInfo.Ppid)
 			return
 		}
 		if !bytes.Equal(b[:n], []byte("hello")) {
@@ -149,7 +161,10 @@ func TestAssocChangeEvent(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_, err = c.Write([]byte("hello"))
+	_, err = c.(*SCTPConn).WriteMsgExt([]byte("hello"),
+		&SndInfo{Ppid: 32000},
+		&net.IPAddr{IP: net.ParseIP("127.0.0.1").To4()},
+		0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +378,14 @@ func TestShutdownEvent(t *testing.T) {
 			errorChan <- err1
 			return
 		}
-
+		if e.Flags() != 0 {
+			errorChan <- errors.New("expected flags == 0")
+			return
+		}
+		if e.Type() != SCTP_SHUTDOWN_EVENT {
+			errorChan <- errors.New("expected SCTP_SHUTDOWN_EVENT")
+			return
+		}
 		_, ok := e.(*ShutdownEvent)
 		if !ok {
 			errorChan <- errors.New("expected ShutdownEvent")
@@ -401,6 +423,11 @@ func TestAbort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(ln1 net.Listener) {
+		_ = ln1.(*SCTPListener).Unsubscribe(SCTP_ASSOC_CHANGE)
+		_ = ln1.Close()
+	}(ln1)
+
 	if err = ln1.(*SCTPListener).Subscribe(SCTP_ASSOC_CHANGE); err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +551,14 @@ func TestAdaptationEvent(t *testing.T) {
 			errorChan <- err1
 			return
 		}
-
+		if e.Flags() != 0 {
+			errorChan <- errors.New("expected flags == 0")
+			return
+		}
+		if e.Type() != SCTP_ADAPTATION_INDICATION {
+			errorChan <- errors.New("expected SCTP_ADAPTATION_INDICATION")
+			return
+		}
 		ae, ok := e.(*AdaptationEvent)
 		if !ok {
 			errorChan <- errors.New("expected AdaptationEvent")
@@ -662,12 +696,21 @@ func TestSenderDryEvent(t *testing.T) {
 	if err1 != nil {
 		t.Fatal(err)
 	}
-
+	if e.Flags() != 0 {
+		errorChan <- errors.New("expected flags == 0")
+		return
+	}
+	if e.Type() != SCTP_SENDER_DRY_EVENT {
+		errorChan <- errors.New("expected SCTP_SENDER_DRY_EVENT")
+		return
+	}
 	_, ok := e.(*SenderDryEvent)
 	if !ok {
 		t.Fatal(errors.New("expected SenderDryEvent"))
 	}
-
+	if err = c1.Unsubscribe(SCTP_SENDER_DRY_EVENT); err != nil {
+		t.Fatal(err)
+	}
 	c.Close()
 	select {
 	case <-closeChan:
@@ -675,5 +718,172 @@ func TestSenderDryEvent(t *testing.T) {
 		if err != io.EOF {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestParseEvent(t *testing.T) {
+	i := uint16(1)
+	if *(*byte)(unsafe.Pointer(&i)) == 0 {
+		t.Skip("skipping on big endian systems")
+	}
+
+	e, err := ParseEvent([]byte{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var b = []byte{
+		2, 128, 0, 0, 148, 0, 0, 0, 2, 0, 178, 41, 127, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 76,
+		2, 0, 0}
+
+	// SCTP_PEER_ADDR_CHANGE event
+	e, err = ParseEvent(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Flags() != 0 {
+		t.Fatal("expected flags == 0")
+	}
+	if e.Type() != SCTP_PEER_ADDR_CHANGE {
+		t.Fatal("expected SCTP_PEER_ADDR_CHANGE")
+	}
+	pace, ok := e.(*PeerAddrChangeEvent)
+	if !ok {
+		t.Fatal(errors.New("expected PeerAddrChangeEvent"))
+	}
+	if pace.State != SCTP_ADDR_ADDED {
+		t.Fatal(errors.New("expected SCTP_ADDR_ADDED"))
+	}
+	if pace.Addr.String() != "127.0.0.2" {
+		t.Fatal(errors.New("expected 127.0.0.2 address to be added"))
+	}
+
+	// _SCTP_SEND_FAILED
+	b = []byte{3, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// SCTP_REMOTE_ERROR
+	b = []byte{4, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Flags() != 0 {
+		t.Fatal("expected flags == 0")
+	}
+	if e.Type() != SCTP_REMOTE_ERROR {
+		t.Fatal("expected SCTP_REMOTE_ERROR")
+	}
+	_, ok = e.(*RemoteErrorEvent)
+	if !ok {
+		t.Fatal(errors.New("expected RemoteErrorEvent"))
+	}
+
+	// SCTP_PARTIAL_DELIVERY_EVENT
+	b = []byte{6, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// SCTP_AUTHENTICATION_EVENT
+	b = []byte{8, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// SCTP_STREAM_RESET_EVENT
+	b = []byte{10, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// SCTP_ASSOC_RESET_EVENT
+	b = []byte{11, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// SCTP_STREAM_CHANGE_EVENT
+	b = []byte{12, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// SCTP_SEND_FAILED_EVENT
+	b = []byte{13, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Flags() != 0 {
+		t.Fatal("expected flags == 0")
+	}
+	if e.Type() != SCTP_SEND_FAILED_EVENT {
+		t.Fatal("expected SCTP_SEND_FAILED_EVENT")
+	}
+	_, ok = e.(*SendFailedEvent)
+	if !ok {
+		t.Fatal(errors.New("expected SendFailedEvent"))
+	}
+
+	// unknown event
+	b = []byte{128, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// too short events
+	b = []byte{1, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected too short event")
+	}
+	//
+	b = []byte{2, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected too short event")
+	}
+	//
+	b = []byte{4, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected too short event")
+	}
+	//
+	b = []byte{5, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected too short event")
+	}
+	//
+	b = []byte{7, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected too short event")
+	}
+	//
+	b = []byte{9, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected too short event")
+	}
+	//
+	b = []byte{13, 128, 0, 0, 0, 0, 0, 0}
+	e, err = ParseEvent(b)
+	if err == nil {
+		t.Fatal("expected too short event")
 	}
 }
