@@ -438,7 +438,7 @@ func maxListenerBacklog() int {
 //
 // See issue 5030 and 41470.
 func maxAckBacklog(n int) int {
-	major, minor := KernelVersion()
+	major, minor := kernelVersion()
 	size := 16
 	if major > 4 || (major == 4 && minor >= 1) {
 		size = 32
@@ -451,12 +451,12 @@ func maxAckBacklog(n int) int {
 	return n
 }
 
-// KernelVersion returns major and minor kernel version numbers, parsed from
+// kernelVersion returns major and minor kernel version numbers, parsed from
 // the unix.Uname's Release field, or 0, 0 if the version can't be obtained
 // or parsed.
 //
 // Currently only implemented for Linux.
-func KernelVersion() (major, minor int) {
+func kernelVersion() (major, minor int) {
 	var uname unix.Utsname
 	if err := unix.Uname(&uname); err != nil {
 		return

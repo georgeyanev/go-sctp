@@ -262,13 +262,12 @@ func (fd *sctpFD) writeMsg(b []byte, info *SndInfo, to *net.IPAddr, flags int) (
 // Fills regular data or notification data in b.
 // Inspect rcvFlags for SCTP_NOTIFICATION to distinguish them
 // Inspect rcvFlags for SCTP_EOR to know if a whole SCTP message is read or just a part of it
-func (fd *sctpFD) readMsg(b []byte) (int, *RcvInfo, int, error) {
+func (fd *sctpFD) readMsg(b, oob []byte) (int, *RcvInfo, int, error) {
 	if !fd.initialized() {
 		return 0, nil, 0, unix.EINVAL
 	}
 	var err error
 	var n, oobn, recvFlags int
-	var oob = make([]byte, 256)
 	doErr := fd.rc.Read(func(fd uintptr) bool {
 		for {
 			n, oobn, recvFlags, _, err = syscall.Recvmsg(int(fd), b, oob, 0)

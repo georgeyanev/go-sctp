@@ -9,10 +9,13 @@ package sctp
 import (
 	"bytes"
 	"errors"
+	"golang.org/x/sys/unix"
 	"io"
 	"log"
 	"net"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestPartialRead(t *testing.T) {
@@ -165,6 +168,263 @@ func TestSCTPStatus(t *testing.T) {
 		if err != io.EOF {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestSockOpt(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	closeChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
+		c, err1 := ln1.Accept()
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		defer func(c net.Conn) {
+			c.Close()
+			close(closeChan)
+		}(c)
+
+		b := make([]byte, 256)
+		// read EOF
+		_, _, _, err1 = c.(*SCTPConn).ReadMsg(b)
+		if err1 != nil && err1 != io.EOF {
+			errorChan <- err1
+			return
+		}
+	}()
+
+	var d = Dialer{
+		LocalAddr: &SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IP{127, 0, 0, 1}}}},
+	}
+	c, err := d.Dial("sctp4", ln1.Addr().String())
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Dial: %s ------> %s", c.LocalAddr().String(), c.RemoteAddr().String())
+	c1 := c.(*SCTPConn)
+
+	if err = c1.SetDisableFragments(true); err != nil {
+		t.Fatal(err)
+	}
+
+	buffer, err := c1.ReadBufferSize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if buffer <= 0 {
+		t.Fatal(errors.New("expected non-zero read buffer size"))
+	}
+
+	buffer, err = c1.WriteBufferSize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if buffer <= 0 {
+		t.Fatal(errors.New("expected non-zero write buffer size"))
+	}
+
+	if _, err = c1.RefreshRemoteAddr(); err != nil {
+		t.Fatal(err)
+	}
+
+	c.Close()
+	select {
+	case <-closeChan:
+	case err = <-errorChan:
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestSCTPConnBindAddRemove(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	closeChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
+		c, err1 := ln1.Accept()
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		defer func(c net.Conn) {
+			c.Close()
+			close(closeChan)
+		}(c)
+
+		b := make([]byte, 256)
+		// read EOF
+		_, _, _, err1 = c.(*SCTPConn).ReadMsg(b)
+		if err1 != nil && err1 != io.EOF {
+			errorChan <- err1
+			return
+		}
+	}()
+
+	var d = Dialer{
+		LocalAddr: &SCTPAddr{IPAddrs: []net.IPAddr{{IP: net.IP{127, 0, 0, 1}}}},
+	}
+	c, err := d.Dial("sctp4", ln1.Addr().String())
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Dial: %s ------> %s", c.LocalAddr().String(), c.RemoteAddr().String())
+	c1 := c.(*SCTPConn)
+
+	err = c1.BindAdd("127.0.0.2/127.0.0.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(c1.LocalAddr().String(), "127.0.0.1") ||
+		!strings.Contains(c1.LocalAddr().String(), "127.0.0.2") ||
+		!strings.Contains(c1.LocalAddr().String(), "127.0.0.3") {
+		t.Fatal(err)
+	}
+
+	err = c1.BindRemove("127.0.0.1/127.0.0.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(c1.LocalAddr().String(), "127.0.0.1") ||
+		strings.Contains(c1.LocalAddr().String(), "127.0.0.2") {
+		t.Fatal(err)
+	}
+
+	c.Close()
+	select {
+	case <-closeChan:
+	case err = <-errorChan:
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestSCTPConnErrors(t *testing.T) {
+	c := SCTPConn{conn{}}
+	var err error
+
+	err = c.BindAdd("127.0.0.2/127.0.0.3")
+	checkErr(t, err, unix.EINVAL)
+	err = c.BindAddSCTP(nil)
+	checkErr(t, err, unix.EINVAL)
+	err = c.BindRemove("127.0.0.2/127.0.0.3")
+	checkErr(t, err, unix.EINVAL)
+	err = c.BindRemoveSCTP(nil)
+	checkErr(t, err, unix.EINVAL)
+	_, _, _, err = c.ReadMsg([]byte{})
+	checkErr(t, err, unix.EINVAL)
+	_, err = c.WriteMsg(nil, nil)
+	checkErr(t, err, unix.EINVAL)
+	err = c.Subscribe()
+	checkErr(t, err, unix.EINVAL)
+	err = c.Unsubscribe()
+	checkErr(t, err, unix.EINVAL)
+	_, err = c.RefreshRemoteAddr()
+	checkErr(t, err, unix.EINVAL)
+	err = c.SetNoDelay(true)
+	checkErr(t, err, unix.EINVAL)
+	err = c.SetDisableFragments(true)
+	checkErr(t, err, unix.EINVAL)
+	_, err = c.WriteBufferSize()
+	checkErr(t, err, unix.EINVAL)
+	_, err = c.ReadBufferSize()
+	checkErr(t, err, unix.EINVAL)
+	err = c.SetLinger(0)
+	checkErr(t, err, unix.EINVAL)
+	err = c.CloseRead()
+	checkErr(t, err, unix.EINVAL)
+	err = c.CloseWrite()
+	checkErr(t, err, unix.EINVAL)
+	_, err = c.Status()
+	checkErr(t, err, unix.EINVAL)
+	// conn
+	_, err = c.Read([]byte{})
+	checkErr(t, err, unix.EINVAL)
+	_, err = c.Write(nil)
+	checkErr(t, err, unix.EINVAL)
+	err = c.SetDeadline(time.Time{})
+	checkErr(t, err, unix.EINVAL)
+	err = c.SetReadDeadline(time.Time{})
+	checkErr(t, err, unix.EINVAL)
+	err = c.SetWriteDeadline(time.Time{})
+	checkErr(t, err, unix.EINVAL)
+	err = c.Close()
+	checkErr(t, err, unix.EINVAL)
+	c.LocalAddr()
+	c.RemoteAddr()
+
+	//
+	c1 := SCTPConn{conn{fd: &sctpFD{}}}
+	err = c1.BindAdd("127.0.0.2")
+	checkOpErr(t, err)
+	err = c1.BindAddSCTP(nil)
+	checkOpErr(t, err)
+	err = c1.BindRemove("127.0.0.2")
+	checkOpErr(t, err)
+	err = c1.BindRemoveSCTP(nil)
+	checkOpErr(t, err)
+	err = c1.Subscribe(SCTP_SENDER_DRY_EVENT)
+	checkErr(t, err, unix.EINVAL)
+	err = c1.Unsubscribe(SCTP_SENDER_DRY_EVENT)
+	checkErr(t, err, unix.EINVAL)
+	err = c1.SetNoDelay(true)
+	checkErr(t, err, unix.EINVAL)
+	err = c1.SetDisableFragments(true)
+	checkErr(t, err, unix.EINVAL)
+	_, err = c1.WriteBufferSize()
+	checkErr(t, err, unix.EINVAL)
+	_, err = c1.ReadBufferSize()
+	checkErr(t, err, unix.EINVAL)
+	err = c1.SetLinger(0)
+	checkErr(t, err, unix.EINVAL)
+	err = c1.CloseRead()
+	checkErr(t, err, unix.EINVAL)
+	err = c1.CloseWrite()
+	checkErr(t, err, unix.EINVAL)
+	_, err = c1.Status()
+	checkErr(t, err, unix.EINVAL)
+	_, err = c1.fd.accept()
+	checkErr(t, err, unix.EINVAL)
+	_, err = c1.fd.writeMsg(nil, nil, nil, 0)
+	checkErr(t, err, unix.EINVAL)
+	_, _, _, err = c1.fd.readMsg(nil, nil)
+	checkErr(t, err, unix.EINVAL)
+	c1.fd.refreshLocalAddr()
+	c1.fd.refreshRemoteAddr()
+	err = c1.fd.init(-1)
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+	_, err = c1.fd.retrieveLocalAddr()
+	checkErr(t, err, unix.EINVAL)
+	_, err = c1.fd.retrieveRemoteAddr()
+	checkErr(t, err, unix.EINVAL)
+	err = c1.fd.close()
+	checkErr(t, err, unix.EINVAL)
+
+}
+
+func checkErr(t *testing.T, err error, errExpected error) {
+	if !errors.Is(err, errExpected) {
+		t.Fatal(err)
+	}
+}
+
+func checkOpErr(t *testing.T, err error) {
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) {
+		t.Fatal(err)
 	}
 }
 

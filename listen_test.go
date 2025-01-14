@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sys/unix"
 	"log"
 	"net"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -334,4 +335,98 @@ func TestListenConfigControlSCTP(t *testing.T) {
 			ln.Close()
 		}
 	})
+}
+
+func TestListenerBindAddRemove(t *testing.T) {
+	ln1, err := Listen("sctp4", "127.0.0.1/127.0.0.2/127.0.0.3/127.0.0.4:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln1SCTP := ln1.(*SCTPListener)
+	err = ln1SCTP.BindRemove("127.0.0.2/127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(ln1.Addr().String(), "127.0.0.1") ||
+		strings.Contains(ln1.Addr().String(), "127.0.0.2") {
+		t.Fatal(err)
+	}
+	err = ln1SCTP.BindAdd("127.0.0.2/127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ln1.Addr().String(), "127.0.0.1") ||
+		!strings.Contains(ln1.Addr().String(), "127.0.0.2") {
+		t.Fatal(err)
+	}
+	_ = ln1.Close()
+
+	//
+	ln1, err = Listen("sctp", "[::1]/127.0.0.1/127.0.0.2/127.0.0.3/127.0.0.4:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln1SCTP = ln1.(*SCTPListener)
+	err = ln1SCTP.BindRemove("[::1]/127.0.0.2/127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(ln1.Addr().String(), "127.0.0.1") ||
+		strings.Contains(ln1.Addr().String(), "127.0.0.2") ||
+		strings.Contains(ln1.Addr().String(), "::1") {
+		t.Fatal(err)
+	}
+
+	err = ln1SCTP.BindAdd("[::1]/127.0.0.2/127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ln1.Addr().String(), "127.0.0.1") ||
+		!strings.Contains(ln1.Addr().String(), "127.0.0.2") ||
+		!strings.Contains(ln1.Addr().String(), "::1") {
+		t.Fatal(err)
+	}
+	_ = ln1.Close()
+}
+
+func TestListenErrors(t *testing.T) {
+	lc := &ListenConfig{}
+	ln := &SCTPListener{}
+	var err error
+
+	_, err = lc.ListenSCTP("aaa", nil)
+	checkOpErr(t, err)
+	_, err = ln.AcceptSCTP()
+	checkErr(t, err, unix.EINVAL)
+	ln.Addr()
+	err = ln.Close()
+	checkErr(t, err, unix.EINVAL)
+	err = ln.SetDeadline(time.Now())
+	checkErr(t, err, unix.EINVAL)
+	err = ln.BindAdd("")
+	checkErr(t, err, unix.EINVAL)
+	err = ln.BindAddSCTP(nil)
+	checkErr(t, err, unix.EINVAL)
+	err = ln.BindRemove("")
+	checkErr(t, err, unix.EINVAL)
+	err = ln.BindRemoveSCTP(nil)
+	checkErr(t, err, unix.EINVAL)
+	err = ln.Subscribe()
+	checkErr(t, err, unix.EINVAL)
+	err = ln.Unsubscribe()
+	checkErr(t, err, unix.EINVAL)
+	err = ln.close()
+	checkErr(t, err, unix.EINVAL)
+	_, err = ln.accept()
+	checkErr(t, err, unix.EINVAL)
+
+	ln = &SCTPListener{fd: &sctpFD{}}
+	err = ln.BindAdd("127.0.0.1")
+	checkOpErr(t, err)
+	err = ln.BindAddSCTP(nil)
+	checkOpErr(t, err)
+	err = ln.BindRemove("127.0.0.1")
+	checkOpErr(t, err)
+	err = ln.BindRemoveSCTP(nil)
+	checkOpErr(t, err)
 }

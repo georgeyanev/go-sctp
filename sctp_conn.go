@@ -88,16 +88,26 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 	return nil
 }
 
-// ReadMsg reads a message from the socket and stores it into 'b'.
-// If there is no room for the message in b, ReadMsg fills b with part
+func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
+	oob := make([]byte, 256)
+	return c.ReadMsgExt(b, oob)
+}
+
+// ReadMsgExt reads a message from the socket and stores it into 'b'.
+// The 'obb' buffer is filled with ancillary data from which the rcvInfo return arg is composed.
+//
+// If there is no room for the message in b, ReadMsgExt fills b with part
 // of the message and clears SCTP_EOR flag in recvFlags. The rest of the message
-// should be retrieved using subsequent calls to ReadMsg, the last one having
+// should be retrieved using subsequent calls to ReadMsgExt, the last one having
 // SCTP_EOR set.
+// If there is no room for the ancillary data in obb, ReadMsgExt fills obb with part
+// of the ancillary data and sets SCTP_CTRUNC flag in recvFlags.
+//
 // The message stored in 'b' can be a regular message or a notification(event)
 // message. Notifications are returned only if Subscribe has been called prior
 // to reading the message. If the message is a notification, the SCTP_NOTIFICATION
 // flag will be set in recvFlags.
-// A ReadMsg call will return only one notification at a time.  Just
+// A ReadMsgExt call will return only one notification at a time.  Just
 // as when reading normal data, it may return part of a notification if
 // the buffer passed is not large enough. If a single read is not
 // sufficient, recvFlags will have SCTP_EOR unset, indicating the need for further
@@ -105,7 +115,7 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 // The notification message can later be parsed with ParseEvent function
 // once a complete message has been obtained.
 //
-// ReadMsg returns:
+// ReadMsgExt returns:
 //
 // n: Number of bytes read and stored into b.
 // rcvInfo: Information about the received message.
@@ -115,13 +125,13 @@ func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 // Since os.File is used for integration with the poller, os.ErrClosed
 // should be checked instead of net.ErrClosed.
 //
-// If the default functionality meets the caller's needs, the SCTPConn.Read
+// If the basic SCTP functionality meets the caller's needs, the SCTPConn.Read
 // function may be used as a simpler alternative.
-func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
+func (c *SCTPConn) ReadMsgExt(b, oob []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
 	if !c.ok() {
 		return 0, nil, 0, unix.EINVAL
 	}
-	n, rcvInfo, rcvFlags, err := c.fd.readMsg(b)
+	n, rcvInfo, rcvFlags, err := c.fd.readMsg(b, oob)
 	if err != nil && err != io.EOF {
 		err = &net.OpError{Op: "readMsg", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
@@ -153,7 +163,7 @@ func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
 // Since os.File is used for integration with the poller, os.ErrClosed
 // should be checked instead of net.ErrClosed for closure detection.
 //
-// If the default functionality meets the caller's needs, the SCTPConn.Write
+// If the basic SCTP functionality meets the caller's needs, the SCTPConn.Write
 // function may be used as a simpler alternative.
 func (c *SCTPConn) WriteMsgExt(b []byte, info *SndInfo, to *net.IPAddr, flags int) (int, error) {
 	if !c.ok() {
@@ -239,24 +249,24 @@ func (c *SCTPConn) SetDisableFragments(disableFragments bool) error {
 	return nil
 }
 
-// WriteBuffer returns the current socket's  write buffer size in bytes.
-func (c *SCTPConn) WriteBuffer() (int, error) {
+// WriteBufferSize returns the current socket's  write buffer size in bytes.
+func (c *SCTPConn) WriteBufferSize() (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
 	}
-	sbSize, err := c.fd.writeBuffer()
+	sbSize, err := c.fd.writeBufferSize()
 	if err != nil {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
 	return sbSize, nil
 }
 
-// ReadBuffer returns the current socket's read buffer size in bytes.
-func (c *SCTPConn) ReadBuffer() (int, error) {
+// ReadBufferSize returns the current socket's read buffer size in bytes.
+func (c *SCTPConn) ReadBufferSize() (int, error) {
 	if !c.ok() {
 		return 0, unix.EINVAL
 	}
-	sbSize, err := c.fd.readBuffer()
+	sbSize, err := c.fd.readBufferSize()
 	if err != nil {
 		return 0, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}

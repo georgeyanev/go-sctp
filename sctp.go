@@ -13,12 +13,16 @@ import (
 // flags set upon calling ReadMsg in recvFlags
 const (
 	// SCTP_NOTIFICATION indicates that the received message is
-	// an SCTP event and not a data message
+	// an SCTP event and not a data message.
 	SCTP_NOTIFICATION = 0x8000
 
 	// SCTP_EOR indicates the end of a message (End Of Record).
-	// See SCTPConn.ReadMsg for more details
+	// See SCTPConn.ReadMsgExt for more details
 	SCTP_EOR = unix.MSG_EOR
+
+	// SCTP_CTRUNC indicates the ancillary data was truncated.
+	// See SCTPConn.ReadMsgExt for more details
+	SCTP_CTRUNC = unix.MSG_CTRUNC
 )
 
 // InitOptions structure provides information for initializing new SCTP associations
