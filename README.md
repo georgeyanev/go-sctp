@@ -2,6 +2,7 @@
 
 [![Go Tests](https://github.com/georgeyanev/go-sctp/actions/workflows/test.yml/badge.svg)](https://github.com/georgeyanev/go-sctp/actions/workflows/test.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/georgeyanev/go-sctp.svg)](https://pkg.go.dev/github.com/georgeyanev/go-sctp)
+[![codecov](https://codecov.io/gh/georgeyanev/go-sctp/graph/badge.svg?token=QT0VLRUEJE)](https://codecov.io/gh/georgeyanev/go-sctp)
 [![Fork me on GitHub](https://img.shields.io/badge/Fork%20me%20on-GitHub-blue?style=flat-square)](https://github.com/georgeyanev/go-sctp/fork)
 
 **`go-sctp`** is a Golang package that provides an efficient interface for working 
