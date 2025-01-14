@@ -1,7 +1,12 @@
 # Changelog
 
+## v0.11.0
+### Add
+- SCTPConn.ReadMsgExt function allowing the user to pass a pre-allocated oob buffer
+- Code coverage
+
 ## v0.10.0
-### Added
+### Add
 - Initial release with core SCTP functionality, that including:
   - Support for one-to-one SCTP mode (SOCK_STREAM socket type)
   - Use of non-blocking sockets
