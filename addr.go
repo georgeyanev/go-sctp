@@ -2,18 +2,14 @@
 // Use of this source code is governed by a MIT
 // license that can be found in the LICENSE file.
 
-//go:build linux
-
 package sctp
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"net"
 	"strings"
-	"unsafe"
+	"syscall"
 )
 
 // SCTPAddr represents the address of an SCTP endpoint. It contains an address array
@@ -61,19 +57,19 @@ func (a *SCTPAddr) isEmpty() bool {
 
 func (a *SCTPAddr) family() int {
 	if a == nil || len(a.IPAddrs) == 0 || len(a.IPAddrs[0].IP) <= net.IPv4len {
-		return unix.AF_INET
+		return syscall.AF_INET
 	}
 	for _, ip := range a.IPAddrs {
 		if ip.IP.To4() == nil {
-			return unix.AF_INET6
+			return syscall.AF_INET6
 		}
 	}
-	return unix.AF_INET
+	return syscall.AF_INET
 }
 
 func (a *SCTPAddr) matchAddrFamily(x *SCTPAddr) bool {
-	return a.family() == unix.AF_INET && x.family() == unix.AF_INET ||
-		a.family() == unix.AF_INET6 && x.family() == unix.AF_INET6
+	return a.family() == syscall.AF_INET && x.family() == syscall.AF_INET ||
+		a.family() == syscall.AF_INET6 && x.family() == syscall.AF_INET6
 }
 
 func (a *SCTPAddr) opAddr() net.Addr {
@@ -90,7 +86,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 	}
 	var buf []byte
 	switch {
-	case family == unix.AF_INET && a.isEmpty():
+	case family == syscall.AF_INET && a.isEmpty():
 		sa, err := ipToSockaddrInet4(nil, port)
 		if err != nil {
 			return nil, err
@@ -101,7 +97,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 		}
 		buf = append(buf, saBuf...)
 
-	case family == unix.AF_INET6 && a.isEmpty():
+	case family == syscall.AF_INET6 && a.isEmpty():
 		sa, err := ipToSockaddrInet6(nil, port, "")
 		if err != nil {
 			return nil, err
@@ -112,7 +108,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 		}
 		buf = append(buf, saBuf...)
 
-	case family == unix.AF_INET:
+	case family == syscall.AF_INET:
 		for _, ip := range a.IPAddrs {
 			sa, err := ipToSockaddrInet4(ip.IP, port)
 			if err != nil {
@@ -124,7 +120,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 			}
 			buf = append(buf, saBuf...)
 		}
-	case family == unix.AF_INET6:
+	case family == syscall.AF_INET6:
 		for _, ip := range a.IPAddrs {
 			sa, err := ipToSockaddrInet6(ip.IP, port, ip.Zone)
 			if err != nil {
@@ -211,34 +207,4 @@ func resolveSCTPAddr(op, network, addr string, hint *SCTPAddr) (*SCTPAddr, error
 	}
 
 	return &SCTPAddr{IPAddrs: ipAddrs, Port: tcpAddr.Port}, nil
-}
-
-func fromSockaddrBuff(buf []byte, numAddrs int) (*SCTPAddr, error) {
-	up := unsafe.Pointer(&buf[0])
-	rawSockaddrAny := (*unix.RawSockaddrAny)(up)
-
-	sctpAddr := SCTPAddr{}
-
-	switch rawSockaddrAny.Addr.Family {
-	case unix.AF_INET:
-		rsi4 := (*unix.RawSockaddrInet4)(up)
-		sctpAddr.Port = int(Ntohui16(rsi4.Port))
-		for i := 0; i < numAddrs; i++ {
-			pp := (*unix.RawSockaddrInet4)(unsafe.Pointer(uintptr(up) + uintptr(i)*unix.SizeofSockaddrInet4))
-			sctpAddr.IPAddrs = append(sctpAddr.IPAddrs, net.IPAddr{IP: pp.Addr[:]})
-		}
-
-	case unix.AF_INET6:
-		rsi6 := (*unix.RawSockaddrInet6)(up)
-		sctpAddr.Port = int(Ntohui16(rsi6.Port))
-		for i := 0; i < numAddrs; i++ {
-			pp := (*unix.RawSockaddrInet6)(unsafe.Pointer(uintptr(up) + uintptr(i)*unix.SizeofSockaddrInet6))
-			sctpAddr.IPAddrs = append(sctpAddr.IPAddrs, net.IPAddr{IP: pp.Addr[:], Zone: zoneCache.name(int(pp.Scope_id))})
-		}
-
-	default:
-		return nil, &net.AddrError{Err: "invalid address family", Addr: hex.EncodeToString(buf)}
-	}
-
-	return &sctpAddr, nil
 }

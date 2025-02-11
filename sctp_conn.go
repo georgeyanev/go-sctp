@@ -2,15 +2,13 @@
 // Use of this source code is governed by a MIT
 // license that can be found in the LICENSE file.
 
-//go:build linux
-
 package sctp
 
 import (
 	"errors"
-	"golang.org/x/sys/unix"
 	"io"
 	"net"
+	"syscall"
 	"unsafe"
 )
 
@@ -28,7 +26,7 @@ type SCTPConn struct {
 // `net.sctp.addip_noauth_enable` kernel parameters.
 func (c *SCTPConn) BindAdd(address string) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	laddr, err := resolveSCTPAddr("bindx", c.fd.net, address, nil)
 	if err != nil {
@@ -44,9 +42,9 @@ func (c *SCTPConn) BindAdd(address string) error {
 
 func (c *SCTPConn) BindAddSCTP(laddr *SCTPAddr) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
-	if err := c.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_ADD); err != nil {
+	if err := c.fd.bindAdd(laddr); err != nil {
 		return &net.OpError{Op: "bindx", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(),
 			Err: errors.New("add address: " + laddr.String() + ": " + err.Error())}
 	}
@@ -63,7 +61,7 @@ func (c *SCTPConn) BindAddSCTP(laddr *SCTPAddr) error {
 // `net.sctp.addip_noauth_enable` kernel parameters.
 func (c *SCTPConn) BindRemove(address string) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	laddr, err := resolveSCTPAddr("bindx", c.fd.net, address, nil)
 	if err != nil {
@@ -79,9 +77,9 @@ func (c *SCTPConn) BindRemove(address string) error {
 
 func (c *SCTPConn) BindRemoveSCTP(laddr *SCTPAddr) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
-	if err := c.fd.bind(laddr, _SCTP_SOCKOPT_BINDX_REM); err != nil {
+	if err := c.fd.bindRemove(laddr); err != nil {
 		return &net.OpError{Op: "bindx", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(),
 			Err: errors.New("remove address: " + laddr.String() + ": " + err.Error())}
 	}
@@ -129,7 +127,7 @@ func (c *SCTPConn) ReadMsg(b []byte) (n int, rcvInfo *RcvInfo, recvFlags int, er
 // function may be used as a simpler alternative.
 func (c *SCTPConn) ReadMsgExt(b, oob []byte) (n int, rcvInfo *RcvInfo, recvFlags int, err error) {
 	if !c.ok() {
-		return 0, nil, 0, unix.EINVAL
+		return 0, nil, 0, syscall.EINVAL
 	}
 	n, rcvInfo, rcvFlags, err := c.fd.readMsg(b, oob)
 	if err != nil && err != io.EOF {
@@ -167,7 +165,7 @@ func (c *SCTPConn) WriteMsg(b []byte, info *SndInfo) (int, error) {
 // function may be used as a simpler alternative.
 func (c *SCTPConn) WriteMsgExt(b []byte, info *SndInfo, to *net.IPAddr, flags int) (int, error) {
 	if !c.ok() {
-		return 0, unix.EINVAL
+		return 0, syscall.EINVAL
 	}
 	n, err := c.fd.writeMsg(b, info, to, flags)
 	if err != nil {
@@ -182,7 +180,7 @@ func (c *SCTPConn) WriteMsgExt(b []byte, info *SndInfo, to *net.IPAddr, flags in
 // ReadMsg having SCTP_NOTIFICATION flag set in recvFlags.
 func (c *SCTPConn) Subscribe(event ...EventType) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	for _, e := range event {
 		if err := c.fd.subscribe(e, true); err != nil {
@@ -195,7 +193,7 @@ func (c *SCTPConn) Subscribe(event ...EventType) error {
 // Unsubscribe from one or more of the SCTP event types we have previously subscribed.
 func (c *SCTPConn) Unsubscribe(event ...EventType) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	for _, e := range event {
 		if err := c.fd.subscribe(e, false); err != nil {
@@ -209,7 +207,7 @@ func (c *SCTPConn) Unsubscribe(event ...EventType) error {
 // I.e. after receiving an SCTP_PEER_ADDR_CHANGE event
 func (c *SCTPConn) RefreshRemoteAddr() (*SCTPAddr, error) {
 	if !c.ok() {
-		return nil, unix.EINVAL
+		return nil, syscall.EINVAL
 	}
 	c.fd.refreshRemoteAddr()
 	return c.fd.raddr.Load(), nil
@@ -224,7 +222,7 @@ func (c *SCTPConn) RefreshRemoteAddr() (*SCTPAddr, error) {
 // Turning this option on disables any Nagle-like algorithm.
 func (c *SCTPConn) SetNoDelay(noDelay bool) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	if err := c.fd.setNoDelay(noDelay); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
@@ -241,7 +239,7 @@ func (c *SCTPConn) SetNoDelay(noDelay bool) error {
 // reassembled by the peer.
 func (c *SCTPConn) SetDisableFragments(disableFragments bool) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	if err := c.fd.setDisableFragments(disableFragments); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
@@ -252,7 +250,7 @@ func (c *SCTPConn) SetDisableFragments(disableFragments bool) error {
 // WriteBufferSize returns the current socket's  write buffer size in bytes.
 func (c *SCTPConn) WriteBufferSize() (int, error) {
 	if !c.ok() {
-		return 0, unix.EINVAL
+		return 0, syscall.EINVAL
 	}
 	sbSize, err := c.fd.writeBufferSize()
 	if err != nil {
@@ -264,7 +262,7 @@ func (c *SCTPConn) WriteBufferSize() (int, error) {
 // ReadBufferSize returns the current socket's read buffer size in bytes.
 func (c *SCTPConn) ReadBufferSize() (int, error) {
 	if !c.ok() {
-		return 0, unix.EINVAL
+		return 0, syscall.EINVAL
 	}
 	sbSize, err := c.fd.readBufferSize()
 	if err != nil {
@@ -291,7 +289,7 @@ func (c *SCTPConn) ReadBufferSize() (int, error) {
 // shutdown phase will continue in the system.
 func (c *SCTPConn) SetLinger(sec int) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	err := c.fd.setLinger(sec)
 	if err != nil {
@@ -308,7 +306,7 @@ func (c *SCTPConn) SetLinger(sec int) error {
 // called to close the socket descriptor.
 func (c *SCTPConn) CloseRead() error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	if err := c.fd.closeRead(); err != nil {
 		return &net.OpError{Op: "close", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
@@ -335,7 +333,7 @@ func (c *SCTPConn) CloseRead() error {
 // function, or SCTP_ABORT flag in SndInfo struct.
 func (c *SCTPConn) CloseWrite() error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	if err := c.fd.closeWrite(); err != nil {
 		return &net.OpError{Op: "close", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
@@ -346,7 +344,7 @@ func (c *SCTPConn) CloseWrite() error {
 // Status returns the current status of the SCTP association.
 func (c *SCTPConn) Status() (*Status, error) {
 	if !c.ok() {
-		return nil, unix.EINVAL
+		return nil, syscall.EINVAL
 	}
 	sctpStatus, err := c.fd.status()
 	if err != nil {
