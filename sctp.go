@@ -2,13 +2,7 @@
 // Use of this source code is governed by a MIT
 // license that can be found in the LICENSE file.
 
-//go:build linux
-
 package sctp
-
-import (
-	"golang.org/x/sys/unix"
-)
 
 // flags set upon calling ReadMsg in recvFlags
 const (
@@ -18,11 +12,11 @@ const (
 
 	// SCTP_EOR indicates the end of a message (End Of Record).
 	// See SCTPConn.ReadMsgExt for more details
-	SCTP_EOR = unix.MSG_EOR
+	SCTP_EOR = 0x80 // unix.MSG_EOR
 
 	// SCTP_CTRUNC indicates the ancillary data was truncated.
 	// See SCTPConn.ReadMsgExt for more details
-	SCTP_CTRUNC = unix.MSG_CTRUNC
+	SCTP_CTRUNC = 0x8 // unix.MSG_CTRUNC
 )
 
 // InitOptions structure provides information for initializing new SCTP associations
@@ -106,7 +100,7 @@ const (
 	// procedures on the specified association.  Graceful shutdown
 	// assures that all data queued by both endpoints is successfully
 	// transmitted before closing the association.
-	SCTP_EOF = unix.MSG_FIN
+	SCTP_EOF = 0x200 // unix.MSG_FIN
 )
 
 // RcvInfo structure describes SCTP receive information about a received message

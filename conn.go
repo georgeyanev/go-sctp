@@ -2,20 +2,32 @@
 // Use of this source code is governed by a MIT
 // license that can be found in the LICENSE file.
 
-//go:build linux
-
 package sctp
 
 import (
-	"golang.org/x/sys/unix"
 	"io"
 	"net"
+	"os"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
 
 type conn struct {
 	fd *sctpFD
+}
+
+type sctpFD struct {
+	f  *os.File        // only trough os.File we can take advantage of the runtime network poller
+	rc syscall.RawConn // rc is used for specific SCTP socket ops; derived from fd
+
+	// mutable (BindAdd and BindRemove); atomic access
+	laddr atomic.Pointer[SCTPAddr]
+	raddr atomic.Pointer[SCTPAddr]
+
+	// immutable until Close
+	family int
+	net    string
 }
 
 // Read receives data from the peer of an SCTP endpoint.
@@ -40,7 +52,7 @@ type conn struct {
 // can be used.
 func (c *conn) Read(b []byte) (int, error) {
 	if !c.ok() {
-		return 0, unix.EINVAL
+		return 0, syscall.EINVAL
 	}
 	n, err := c.fd.f.Read(b)
 	if err != nil && err != io.EOF {
@@ -70,7 +82,7 @@ func (c *conn) Read(b []byte) (int, error) {
 // can be used.
 func (c *conn) Write(b []byte) (int, error) {
 	if !c.ok() {
-		return 0, unix.EINVAL
+		return 0, syscall.EINVAL
 	}
 	n, err := c.fd.f.Write(b)
 	if err != nil {
@@ -82,7 +94,7 @@ func (c *conn) Write(b []byte) (int, error) {
 // SetDeadline sets both the read and write deadlines associated with the Conn.
 func (c *conn) SetDeadline(t time.Time) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	if err := c.fd.f.SetDeadline(t); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(), Err: err}
@@ -93,7 +105,7 @@ func (c *conn) SetDeadline(t time.Time) error {
 // SetReadDeadline sets the read deadline associated with the Conn.
 func (c *conn) SetReadDeadline(t time.Time) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	if err := c.fd.f.SetReadDeadline(t); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(), Err: err}
@@ -104,7 +116,7 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 // SetWriteDeadline sets the write deadline associated with the Conn.
 func (c *conn) SetWriteDeadline(t time.Time) error {
 	if !c.ok() {
-		return unix.EINVAL
+		return syscall.EINVAL
 	}
 	if err := c.fd.f.SetWriteDeadline(t); err != nil {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: nil, Addr: c.fd.laddr.Load(), Err: err}

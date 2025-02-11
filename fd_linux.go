@@ -14,7 +14,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
@@ -24,26 +23,22 @@ const (
 	_SCTP_CMSG_RCVINFO = 3
 )
 
-type sctpFD struct {
-	f  *os.File        // only trough os.File we can take advantage of the runtime network poller
-	rc syscall.RawConn // rc is used for specific SCTP socket ops; derived from fd
-
-	// mutable (BindAdd and BindRemove); atomic access
-	laddr atomic.Pointer[SCTPAddr]
-	raddr atomic.Pointer[SCTPAddr]
-
-	// immutable until Close
-	family int
-	net    string
-}
-
 // binds the specified addresses or, if the SCTP extension described
 // in [RFC5061] is supported, adds the specified addresses to existing bind
+func (fd *sctpFD) bindAdd(laddr *SCTPAddr) error {
+	return fd.bind(laddr, _SCTP_SOCKOPT_BINDX_ADD)
+}
+
+// if the SCTP extension described in [RFC5061] is supported, removes
+// the specified addresses from existing bind
+func (fd *sctpFD) bindRemove(laddr *SCTPAddr) error {
+	return fd.bind(laddr, _SCTP_SOCKOPT_BINDX_REM)
+}
+
 func (fd *sctpFD) bind(laddr *SCTPAddr, bindMode int) error {
 	if !fd.initialized() {
 		return unix.EINVAL
 	}
-
 	var err error
 	doErr := fd.rc.Control(func(s uintptr) {
 		err = sysBindx(int(s), fd.family, bindMode, laddr)
