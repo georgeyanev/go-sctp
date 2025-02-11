@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"runtime"
+	"syscall"
 	"unsafe"
 )
 
@@ -60,7 +61,7 @@ func setInitOptions(fd int, initOptions InitOptions) error {
 	// In some environments (like Docker Desktop linuxkit), we don't have access to certain kernel
 	// parameters, so first we try to set the buffers forcefully.
 	// read socket buffer
-	err = unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, initOptions.SocketReadBufferSize)
+	err = unix.SetsockoptInt(fd, syscall.SOL_SOCKET, unix.SO_RCVBUFFORCE, initOptions.SocketReadBufferSize)
 	if err != nil {
 		if err = unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUF, initOptions.SocketReadBufferSize); err != nil {
 			return os.NewSyscallError("setsockopt", err)
