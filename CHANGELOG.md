@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.12.0
+### Add
+- unsupported.go to return error on non-supported platforms, allowing go-sctp to compile on non-supported platforms
+
 ## v0.11.0
 ### Add
 - SCTPConn.ReadMsgExt function allowing the user to pass a pre-allocated oob buffer
