@@ -40,8 +40,9 @@ func TestSCTPConnSpecificMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	//c.SetKeepAlive(false) // TODO: revisit when managing heartbeats is implemented
-	//c.SetKeepAlivePeriod(3 * time.Second)
+	c.SetHeartbeat(-1, nil)
+	c.SetHeartbeat(0, nil)
+	c.SetHeartbeat(1, &net.IPAddr{IP: net.IPv4zero})
 	c.SetLinger(0)
 	c.SetNoDelay(false)
 	c.LocalAddr()

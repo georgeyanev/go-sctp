@@ -47,7 +47,6 @@ var (
 // descriptor as nonblocking and close-on-exec.
 func sysSocket(family, sotype, proto int) (int, error) {
 	s, err := unix.Socket(family, sotype|unix.SOCK_NONBLOCK|unix.SOCK_CLOEXEC, proto)
-	// TODO: We can remove the fallback on Linux and *BSD,
 	// as currently supported versions all support accept4
 	// with SOCK_CLOEXEC, but Solaris does not. See issue #59359.
 	switch err {
@@ -79,7 +78,6 @@ func sysSocket(family, sotype, proto int) (int, error) {
 // descriptor as nonblocking and close-on-exec.
 func accept(s int) (int, unix.Sockaddr, string, error) {
 	ns, sa, err := unix.Accept4(s, syscall.SOCK_NONBLOCK|syscall.SOCK_CLOEXEC)
-	// TODO: We can remove the fallback on Linux and *BSD,
 	// as currently supported versions all support accept4
 	// with SOCK_CLOEXEC, but Solaris does not. See issue #59359.
 	switch err {
@@ -745,7 +743,6 @@ func minNonzeroTime(a, b time.Time) time.Time {
 // It is also used when Dialer.Deadline is exceeded.
 // error.Is(errTimeout, context.DeadlineExceeded) returns true.
 //
-// TODO(iant): We could consider changing this to os.ErrDeadlineExceeded
 // in the future, if we make
 //
 //	errors.Is(os.ErrDeadlineExceeded, context.DeadlineExceeded)
@@ -933,4 +930,9 @@ func (fd *sctpFD) connect(ctx context.Context, s int, raddr *SCTPAddr) (ret erro
 		}
 		runtime.KeepAlive(fd.f)
 	}
+}
+
+// roundDurationUp rounds d to the next multiple of to.
+func roundDurationUp(d time.Duration, to time.Duration) time.Duration {
+	return (d + to - 1) / to
 }

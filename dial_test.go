@@ -213,11 +213,6 @@ func TestDialerDualStackSCTP(t *testing.T) {
 	t.Skip("We don't resolve host names to multiple IP addresses, only to one of them")
 }
 
-// TODO: Revisit when managing heartbeat is implemented
-func TestDialerKeepAliveSCTP(t *testing.T) {
-	t.Skip("Revisit when managing heartbeat is implemented")
-}
-
 func TestDialTimeoutSCTP(t *testing.T) {
 	blackholeIPPort := slowDst6 + ":1234"
 

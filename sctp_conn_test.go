@@ -121,6 +121,7 @@ func TestPartialRead(t *testing.T) {
 		}
 	}
 }
+
 func TestSCTPStatus(t *testing.T) {
 	ln1, err := Listen("sctp4", "127.0.0.1:0")
 	if err != nil {
@@ -348,6 +349,8 @@ func TestSCTPConnErrors(t *testing.T) {
 	checkErr(t, err, unix.EINVAL)
 	_, err = c.Status()
 	checkErr(t, err, unix.EINVAL)
+	err = c.SetHeartbeat(0, nil)
+	checkErr(t, err, unix.EINVAL)
 	// conn
 	_, err = c.Read([]byte{})
 	checkErr(t, err, unix.EINVAL)
@@ -393,6 +396,8 @@ func TestSCTPConnErrors(t *testing.T) {
 	err = c1.CloseWrite()
 	checkErr(t, err, unix.EINVAL)
 	_, err = c1.Status()
+	checkErr(t, err, unix.EINVAL)
+	err = c1.SetHeartbeat(0, nil)
 	checkErr(t, err, unix.EINVAL)
 	_, err = c1.fd.accept()
 	checkErr(t, err, unix.EINVAL)

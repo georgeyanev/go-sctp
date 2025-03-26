@@ -651,11 +651,6 @@ func BenchmarkSetReadDeadlineSCTP(b *testing.B) {
 	}
 }
 
-// TODO: Revisit when managing heartbeats are implemented
-func TestDialSCTPDefaultKeepAlive(t *testing.T) {
-	t.Skip("revisit when managing heartbeats are implemented")
-}
-
 func TestTCPListenAfterClose(t *testing.T) {
 	// Regression test for https://go.dev/issue/50216:
 	// after calling Close on a Listener, the fake net implementation would
