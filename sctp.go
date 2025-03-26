@@ -4,6 +4,8 @@
 
 package sctp
 
+import "time"
+
 // flags set upon calling ReadMsg in recvFlags
 const (
 	// SCTP_NOTIFICATION indicates that the received message is
@@ -45,9 +47,17 @@ type InitOptions struct {
 	AdaptationIndicationEnabled bool
 	AdaptationIndication        uint32
 
+	// Heartbeat specifies the heartbeat period for network associations.
+	// If zero, heartbeats are enabled and current setting of the heartbeats interval is left unchanged
+	// If negative, heartbeats are disabled.
+	//
 	// SCTP heartbeats are enabled by default and the interval between them are defined
 	// in `net.sctp.hb_interval` kernel parameter which is 30 seconds by default.
-	// TODO: add options for disable and change interval between heartbeats
+	//
+	// These parameter apply for all remote addresses of an association (multi-homing).
+	// If you want different values for different remote addresses you can use the
+	// SCTPConn.SetHeartbeat function
+	Heartbeat time.Duration
 }
 
 // SndInfo structure specifies SCTP options for sending SCTP messages
@@ -234,7 +244,3 @@ const (
 	// SCTP_INACTIVE state is entered whenever a path failure is detected.
 	SCTP_INACTIVE = 0
 )
-
-// TODO: Add heartbeat management (SCTP_PEER_ADDR_PARAMS)
-// TODO: Cookie (SCTP_ASSOCINFO)
-// TODO: Auth and SPA (WriteMsgSpa, WriteMsgSpaExt, Read equivalents)

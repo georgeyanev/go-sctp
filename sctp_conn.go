@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -353,9 +354,26 @@ func (c *SCTPConn) Status() (*Status, error) {
 	return sctpStatus, nil
 }
 
-func newSCTPConn(fd *sctpFD) *SCTPConn {
+// SetHeartbeat sets the heartbeat period for network associations.
+// If zero, heartbeats are enabled and current setting of the heartbeats interval is left unchanged.
+// If negative, heartbeats are disabled.
+// If `to` is nil, all remote addresses of an association (multi-homing) are affected.
+func (c *SCTPConn) SetHeartbeat(d time.Duration, to *net.IPAddr) error {
+	if !c.ok() {
+		return syscall.EINVAL
+	}
+	err := c.fd.setHeartbeat(d, to)
+	if err != nil {
+		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return nil
+}
+
+func newSCTPConn(fd *sctpFD, heartbeat time.Duration) *SCTPConn {
 	_ = fd.setNoDelay(true)
-	// TODO: manage heartbeat here
+	if heartbeat != 0 {
+		_ = fd.setHeartbeat(heartbeat, nil)
+	}
 	return &SCTPConn{conn{fd: fd}}
 }
 

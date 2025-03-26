@@ -908,7 +908,6 @@ func testVariousDeadlines(t *testing.T) {
 	}
 }
 
-// TODO: Revisit
 func TestReadWriteProlongedTimeoutSCTP(t *testing.T) {
 	t.Skip("to be revisited")
 	handler := func(ls *localServerSCTP, ln net.Listener) {
