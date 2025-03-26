@@ -8,9 +8,11 @@ package sctp
 
 import (
 	"golang.org/x/sys/unix"
+	"net"
 	"os"
 	"runtime"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -259,6 +261,7 @@ func (fd *sctpFD) setLinger(sec int) error {
 	return nil
 }
 
+// TODO: Add parameter for setting the remote address (if different than the primary)
 func (fd *sctpFD) status() (*Status, error) {
 	if !fd.initialized() {
 		return nil, unix.EINVAL
@@ -322,6 +325,109 @@ func (fd *sctpFD) status() (*Status, error) {
 			Mtu:     rawParam.primaryAddrInfo.mtu,
 		},
 	}, nil
+}
+
+func (fd *sctpFD) setHeartbeat(d time.Duration, to *net.IPAddr) error {
+	if !fd.initialized() {
+		return unix.EINVAL
+	}
+	const SCTP_PEER_ADDR_PARAMS int = 9
+	type peerAddrParams struct {
+		// the C padding of sctp_paddrparams is different from the Go padding (156 vs 160 bytes),
+		// in which case we allocate the buffer with the C's size and deal with the fields manually (see below)
+		data [156]byte
+	}
+
+	var toSctpAddr *SCTPAddr = nil
+	if to != nil {
+		toSctpAddr = &SCTPAddr{
+			IPAddrs: []net.IPAddr{*to},
+			Port:    fd.raddr.Load().Port,
+		}
+	}
+
+	var err error
+	toAddrBuf, err := toSctpAddr.toSockaddrBuff(fd.family)
+	if err != nil {
+		return &net.AddrError{Err: err.Error(), Addr: toSctpAddr.String()}
+	}
+	params := peerAddrParams{}
+	copy(params.data[4:132], toAddrBuf) // sets the to address
+
+	// first get the current params
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = getsockoptBytes(int(fd), unix.IPPROTO_SCTP, SCTP_PEER_ADDR_PARAMS, params.data[:])
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("getsockopt", err)
+	}
+
+	// get current flags
+	hbInterval := *(*uint32)(unsafe.Pointer(&params.data[132]))
+	flags := *(*uint32)(unsafe.Pointer(&params.data[146]))
+
+	// now change hb-interval and flags accordingly
+	var millis uint32
+	if d == 0 {
+		millis = hbInterval
+	}
+	if d > 0 {
+		millis = uint32(roundDurationUp(d, time.Millisecond))
+	}
+	const SPP_HB_ENABLE = 1
+	const SPP_HB_DISABLE = 2
+	if d < 0 { // disable heartbeat
+		flags &^= SPP_HB_ENABLE
+		flags |= SPP_HB_DISABLE
+	} else { // enable heartbeat
+		flags |= SPP_HB_ENABLE
+		flags &^= SPP_HB_DISABLE
+	}
+	*(*uint32)(unsafe.Pointer(&params.data[132])) = millis // hb-interval
+	*(*uint32)(unsafe.Pointer(&params.data[146])) = flags  // flags
+
+	// set the new params
+	doErr = fd.rc.Control(func(fd uintptr) {
+		err = unix.SetsockoptString(int(fd), unix.IPPROTO_SCTP, SCTP_PEER_ADDR_PARAMS, string(params.data[:]))
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
+
+	return nil
+	/*
+		// Setting values
+		*(*int32)(unsafe.Pointer(&params.data[0])) = 42 // assocId
+		copy(params.data[4:132], make([]byte, 128))    // addr
+		*(*uint32)(unsafe.Pointer(&params.data[132])) = 1000 // hbInterval
+		*(*uint16)(unsafe.Pointer(&params.data[136])) = 5    // pathMaxRxt
+		*(*uint32)(unsafe.Pointer(&params.data[138])) = 1500 // pathMtu
+		*(*uint32)(unsafe.Pointer(&params.data[142])) = 200  // sackDelay
+		*(*uint32)(unsafe.Pointer(&params.data[146])) = 1    // flags
+		*(*uint32)(unsafe.Pointer(&params.data[150])) = 20   // ipv6FlowLabel
+		params.data[154] = 10                                // dscp
+
+		// Access and print the values to verify
+		assocId := int32(*(*uint32)(unsafe.Pointer(&params.data[0])))
+		addr := (*[128]byte)(unsafe.Pointer(&params.data[4]))
+		hbInterval := uint32(*(*uint32)(unsafe.Pointer(&params.data[132])))
+		pathMaxRxt := uint16(*(*uint16)(unsafe.Pointer(&params.data[136])))
+		pathMtu := uint32(*(*uint32)(unsafe.Pointer(&params.data[138])))
+		sackDelay := uint32(*(*uint32)(unsafe.Pointer(&params.data[142])))
+		flags := uint32(*(*uint32)(unsafe.Pointer(&params.data[146])))
+		ipv6FlowLabel := uint32(*(*uint32)(unsafe.Pointer(&params.data[150])))
+		dscp := uint8(*(*uint8)(unsafe.Pointer(&params.data[154])))
+
+		fmt.Println("Size of struct:", unsafe.Sizeof(params)) // Should output 156
+		fmt.Printf("AssocId: %v, Addr: %v, HBInterval: %v, PathMaxRxt: %v, PathMTU: %v, SackDelay: %v, Flags: %v, IPv6FlowLabel: %v, DSCP: %v\n",
+			assocId, addr, hbInterval, pathMaxRxt, pathMtu, sackDelay, flags, ipv6FlowLabel, dscp)
+	*/
 }
 
 func getsockoptBytes(fd, level, opt int, b []byte) error {
