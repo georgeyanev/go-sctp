@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.13.0
+### Add
+- Heartbeat management through `Heartbeat` interval option in InitOptions and SCTPConn.SetHeartbeat function
+
 ## v0.12.0
 ### Add
 - unsupported.go to return error on non-supported platforms, allowing go-sctp to compile on non-supported platforms

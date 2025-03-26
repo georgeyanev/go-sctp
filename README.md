@@ -39,6 +39,7 @@ Well-structured and comprehensive documentation is prioritized as part of the de
   - Exported socket options (i.e. SCTP_ADAPTATION_LAYER, SCTP_DISABLE_FRAGMENTS)
   - Runtime re-binding support through BindAdd and BindRemove
   - Shutdown and Abort support
+  - Heartbeat management support
   - Most of the TCP tests in Go's net package applied here to SCTP
   - Well documented
 
