@@ -54,5 +54,5 @@ func dialSCTP(ctx context.Context, network string, raddr *SCTPAddr, d *Dialer) (
 		return nil, &net.OpError{Op: "dial", Net: network, Source: d.LocalAddr.opAddr(), Addr: raddr.opAddr(), Err: err}
 	}
 
-	return newSCTPConn(fd), nil
+	return newSCTPConn(fd, d.InitOptions.Heartbeat), nil
 }

@@ -266,5 +266,5 @@ func (ln *SCTPListener) accept() (*SCTPConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newSCTPConn(fd), nil
+	return newSCTPConn(fd, ln.lc.InitOptions.Heartbeat), nil
 }
