@@ -171,7 +171,7 @@ func TestListenCloseListenSCTP(t *testing.T) {
 	for tries := 0; tries < maxTries; tries++ {
 		ln := newLocalListenerSCTP(t, "sctp")
 		addr := ln.Addr().String()
-		// TODO: This is racy. The selected address could be reused in between this
+		// WARN: This is racy. The selected address could be reused in between this
 		// Close and the subsequent Listen.
 		if err := ln.Close(); err != nil {
 			if perr := parseCloseError(err, false); perr != nil {
