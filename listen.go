@@ -93,6 +93,9 @@ func listenSCTP(network string, laddr *SCTPAddr, lc *ListenConfig) (*SCTPListene
 	if err != nil {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr.opAddr(), Err: err}
 	}
+	if lc.InitOptions.CookieLife > 0 {
+		_ = fd.setCookieLife(lc.InitOptions.CookieLife)
+	}
 	return &SCTPListener{fd: fd, lc: lc}, nil
 }
 
