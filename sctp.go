@@ -58,6 +58,10 @@ type InitOptions struct {
 	// If you want different values for different remote addresses you can use the
 	// SCTPConn.SetHeartbeat function
 	Heartbeat time.Duration
+
+	// Cookie life value used when issuing cookies. Applicable only to listener sockets (servers).
+	// This parameter is defined in `net.sctp.valid_cookie_life` and is set to 60 seconds by default.
+	CookieLife time.Duration
 }
 
 // SndInfo structure specifies SCTP options for sending SCTP messages
@@ -244,3 +248,26 @@ const (
 	// SCTP_INACTIVE state is entered whenever a path failure is detected.
 	SCTP_INACTIVE = 0
 )
+
+// AssocParams contains various association and endpoint parameters. Returned from SCTPConn.AssocInfo func.
+type AssocParams struct {
+	// Association Id is ignored in one-to-one mode.
+	AssocId int32
+
+	// Maximum retransmission attempts to make for the association.
+	AssocMaxRxt uint16
+
+	// Number of destination addresses that the peer has.
+	NumberPeerDestinations uint16
+
+	// Current value of the peer's rwnd (reported in the last selective acknowledgment (SACK))
+	// minus any outstanding data (i.e., data in flight).
+	PeerRwnd uint32
+
+	// Holds the last reported rwnd that was sent to the peer.
+	LocalRwnd uint32
+
+	// Association's cookie life value used when issuing cookies. The kernel default is 60 seconds
+	// stored in `net.sctp.valid_cookie_life` kernel parameter.
+	CookieLife time.Duration
+}

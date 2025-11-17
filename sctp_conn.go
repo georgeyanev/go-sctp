@@ -343,11 +343,13 @@ func (c *SCTPConn) CloseWrite() error {
 }
 
 // Status returns the current status of the SCTP association.
-func (c *SCTPConn) Status() (*Status, error) {
+// Includes information for a specific peer address (specified by the `to` parameter)
+// If the `to` parameter is not set, the information for the primary address is returned
+func (c *SCTPConn) Status(to *net.IPAddr) (*Status, error) {
 	if !c.ok() {
 		return nil, syscall.EINVAL
 	}
-	sctpStatus, err := c.fd.status()
+	sctpStatus, err := c.fd.status(to)
 	if err != nil {
 		return nil, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
@@ -367,6 +369,18 @@ func (c *SCTPConn) SetHeartbeat(d time.Duration, to *net.IPAddr) error {
 		return &net.OpError{Op: "set", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
 	}
 	return nil
+}
+
+// AssocInfo association parameters (incl. CookieLife) in an AssocParams struct.
+func (c *SCTPConn) AssocInfo() (*AssocParams, error) {
+	if !c.ok() {
+		return nil, syscall.EINVAL
+	}
+	assocParams, err := c.fd.assocInfo()
+	if err != nil {
+		return nil, &net.OpError{Op: "get", Net: c.fd.net, Source: c.fd.laddr.Load(), Addr: c.fd.raddr.Load(), Err: err}
+	}
+	return assocParams, nil
 }
 
 func newSCTPConn(fd *sctpFD, heartbeat time.Duration) *SCTPConn {

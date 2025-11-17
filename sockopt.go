@@ -7,13 +7,14 @@
 package sctp
 
 import (
-	"golang.org/x/sys/unix"
 	"net"
 	"os"
 	"runtime"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -261,8 +262,7 @@ func (fd *sctpFD) setLinger(sec int) error {
 	return nil
 }
 
-// TODO: Add parameter for setting the remote address (if different than the primary)
-func (fd *sctpFD) status() (*Status, error) {
+func (fd *sctpFD) status(to *net.IPAddr) (*Status, error) {
 	if !fd.initialized() {
 		return nil, unix.EINVAL
 	}
@@ -287,9 +287,22 @@ func (fd *sctpFD) status() (*Status, error) {
 		fragmentationPoint uint32
 		primaryAddrInfo    peerAddrInfo
 	}
-	rawParam := sctpStatus{} // to be filled by the getsockopt call
+	var toSctpAddr *SCTPAddr = nil
+	if to != nil {
+		toSctpAddr = &SCTPAddr{
+			IPAddrs: []net.IPAddr{*to},
+			Port:    fd.raddr.Load().Port,
+		}
+	}
 
 	var err error
+	toAddrBuf, err := toSctpAddr.toSockaddrBuff(fd.family)
+	if err != nil {
+		return nil, &net.AddrError{Err: err.Error(), Addr: toSctpAddr.String()}
+	}
+	rawParam := sctpStatus{}                          // to be filled by the getsockopt call
+	copy(rawParam.primaryAddrInfo.addr[:], toAddrBuf) // sets the to address
+
 	rawParamBuf := unsafe.Slice((*byte)(unsafe.Pointer(&rawParam)), unsafe.Sizeof(rawParam))
 	doErr := fd.rc.Control(func(fd uintptr) {
 		err = getsockoptBytes(int(fd), unix.IPPROTO_SCTP, SCTP_STATUS, rawParamBuf)
@@ -401,33 +414,73 @@ func (fd *sctpFD) setHeartbeat(d time.Duration, to *net.IPAddr) error {
 	}
 
 	return nil
-	/*
-		// Setting values
-		*(*int32)(unsafe.Pointer(&params.data[0])) = 42 // assocId
-		copy(params.data[4:132], make([]byte, 128))    // addr
-		*(*uint32)(unsafe.Pointer(&params.data[132])) = 1000 // hbInterval
-		*(*uint16)(unsafe.Pointer(&params.data[136])) = 5    // pathMaxRxt
-		*(*uint32)(unsafe.Pointer(&params.data[138])) = 1500 // pathMtu
-		*(*uint32)(unsafe.Pointer(&params.data[142])) = 200  // sackDelay
-		*(*uint32)(unsafe.Pointer(&params.data[146])) = 1    // flags
-		*(*uint32)(unsafe.Pointer(&params.data[150])) = 20   // ipv6FlowLabel
-		params.data[154] = 10                                // dscp
+}
 
-		// Access and print the values to verify
-		assocId := int32(*(*uint32)(unsafe.Pointer(&params.data[0])))
-		addr := (*[128]byte)(unsafe.Pointer(&params.data[4]))
-		hbInterval := uint32(*(*uint32)(unsafe.Pointer(&params.data[132])))
-		pathMaxRxt := uint16(*(*uint16)(unsafe.Pointer(&params.data[136])))
-		pathMtu := uint32(*(*uint32)(unsafe.Pointer(&params.data[138])))
-		sackDelay := uint32(*(*uint32)(unsafe.Pointer(&params.data[142])))
-		flags := uint32(*(*uint32)(unsafe.Pointer(&params.data[146])))
-		ipv6FlowLabel := uint32(*(*uint32)(unsafe.Pointer(&params.data[150])))
-		dscp := uint8(*(*uint8)(unsafe.Pointer(&params.data[154])))
+func (fd *sctpFD) setCookieLife(d time.Duration) error {
+	if !fd.initialized() {
+		return unix.EINVAL
+	}
+	const SCTP_ASSOCINFO int = 1
+	type assocParamsSt struct {
+		_                      int32
+		assocMaxRxt            uint16
+		numberPeerDestinations uint16
+		peerRwnd               uint32
+		localRwnd              uint32
+		cookieLife             uint32
+	}
+	rawParam := assocParamsSt{cookieLife: uint32(roundDurationUp(d, time.Millisecond))}
+	rawParamBuf := unsafe.Slice((*byte)(unsafe.Pointer(&rawParam)), unsafe.Sizeof(rawParam))
 
-		fmt.Println("Size of struct:", unsafe.Sizeof(params)) // Should output 156
-		fmt.Printf("AssocId: %v, Addr: %v, HBInterval: %v, PathMaxRxt: %v, PathMTU: %v, SackDelay: %v, Flags: %v, IPv6FlowLabel: %v, DSCP: %v\n",
-			assocId, addr, hbInterval, pathMaxRxt, pathMtu, sackDelay, flags, ipv6FlowLabel, dscp)
-	*/
+	var err error
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = unix.SetsockoptString(int(fd), unix.IPPROTO_SCTP, SCTP_ASSOCINFO, string(rawParamBuf))
+	})
+	if doErr != nil {
+		return doErr
+	}
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
+
+	return nil
+}
+
+func (fd *sctpFD) assocInfo() (*AssocParams, error) {
+	if !fd.initialized() {
+		return nil, unix.EINVAL
+	}
+	const SCTP_ASSOCINFO int = 1
+	type assocParamsSt struct {
+		_                      int32
+		assocMaxRxt            uint16
+		numberPeerDestinations uint16
+		peerRwnd               uint32
+		localRwnd              uint32
+		cookieLife             uint32
+	}
+	assocParams := assocParamsSt{} // to be filled by the getsockopt call
+
+	var err error
+	assocParamsBuf := unsafe.Slice((*byte)(unsafe.Pointer(&assocParams)), unsafe.Sizeof(assocParams))
+	doErr := fd.rc.Control(func(fd uintptr) {
+		err = getsockoptBytes(int(fd), unix.IPPROTO_SCTP, SCTP_ASSOCINFO, assocParamsBuf)
+	})
+	if doErr != nil {
+		return nil, doErr
+	}
+
+	if err != nil {
+		return nil, os.NewSyscallError("getsockopt", err)
+	}
+
+	return &AssocParams{
+		AssocMaxRxt:            assocParams.assocMaxRxt,
+		NumberPeerDestinations: assocParams.numberPeerDestinations,
+		PeerRwnd:               assocParams.peerRwnd,
+		LocalRwnd:              assocParams.localRwnd,
+		CookieLife:             time.Duration(assocParams.cookieLife) * time.Millisecond,
+	}, nil
 }
 
 func getsockoptBytes(fd, level, opt int, b []byte) error {
