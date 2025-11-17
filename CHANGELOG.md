@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.0
+### Add
+- Introduce `CookieLife` field in `InitOptions` and `AssocParams`.
+- Add methods to get and set `CookieLife` (`assocInfo`, `setCookieLife`).
+- Update `SCTPConn.Status` func to accept optional peer address.
+
 ## v0.13.0
 ### Add
 - Heartbeat management through `Heartbeat` interval option in InitOptions and SCTPConn.SetHeartbeat function
