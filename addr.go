@@ -139,7 +139,7 @@ func (a *SCTPAddr) toSockaddrBuff(family int) ([]byte, error) {
 	return buf, nil
 }
 
-// ResolveSCTPAddr returns an address of an SCTP end point.
+// ResolveSCTPAddr returns an address of an SCTP endpoint.
 // The network must be an SCTP network name.
 // See func [Dial] for a description of the network and address parameters.
 func ResolveSCTPAddr(network, addr string) (*SCTPAddr, error) {

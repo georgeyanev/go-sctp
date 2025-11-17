@@ -9,13 +9,14 @@ package sctp
 import (
 	"bytes"
 	"errors"
-	"golang.org/x/sys/unix"
 	"io"
 	"log"
 	"net"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestPartialRead(t *testing.T) {
@@ -141,13 +142,80 @@ func TestSCTPStatus(t *testing.T) {
 		}(c)
 
 		c1 := c.(*SCTPConn)
-		sctpStatus, err1 := c1.Status()
+		sctpStatus, err1 := c1.Status(nil)
 		if err1 != nil {
 			errorChan <- err1
 		}
 		// remote ostreams are 11, ours in are 10, remote Instreams are 9, ours out are 10
 		if sctpStatus.InStreams != 10 || sctpStatus.OutStreams != 9 {
 			errorChan <- errors.New("expected 10 inStreams and 9 outStreams")
+		}
+
+		// now set an address as a parameter
+		netIPAddr := c1.RemoteAddr().(*SCTPAddr).IPAddrs[0]
+		sctpStatus, err1 = c1.Status(&netIPAddr)
+		if err1 != nil {
+			errorChan <- err1
+		}
+		// remote ostreams are 11, ours in are 10, remote Instreams are 9, ours out are 10
+		if sctpStatus.InStreams != 10 || sctpStatus.OutStreams != 9 {
+			errorChan <- errors.New("expected 10 inStreams and 9 outStreams")
+		}
+	}()
+	d := Dialer{
+		InitOptions: InitOptions{
+			NumOstreams:  11,
+			MaxInstreams: 9,
+		},
+	}
+	c, err := d.Dial("sctp4", ln1.Addr().String())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	select {
+	case <-closeChan:
+		c.Close()
+	case err := <-errorChan:
+		c.Close()
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestSCTPCookieLife(t *testing.T) {
+	lc := &ListenConfig{
+		InitOptions: InitOptions{
+			CookieLife: 61111 * time.Millisecond,
+		},
+	}
+	ln1, err := lc.Listen("sctp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
+		c, err1 := ln1.Accept()
+		if err1 != nil {
+			errorChan <- err1
+			return
+		}
+		defer func(c net.Conn) {
+			c.Close()
+			close(closeChan)
+		}(c)
+
+		c1 := c.(*SCTPConn)
+
+		assocParams, err1 := c1.AssocInfo()
+		if err1 != nil {
+			errorChan <- err1
+		}
+		// assert that cookie life is set to 61111 milliseconds
+		if assocParams.CookieLife.Milliseconds() != 61111 {
+			errorChan <- errors.New("expected 61111 milliseconds cookie life, got " + assocParams.CookieLife.String())
 		}
 	}()
 	d := Dialer{
@@ -347,7 +415,7 @@ func TestSCTPConnErrors(t *testing.T) {
 	checkErr(t, err, unix.EINVAL)
 	err = c.CloseWrite()
 	checkErr(t, err, unix.EINVAL)
-	_, err = c.Status()
+	_, err = c.Status(nil)
 	checkErr(t, err, unix.EINVAL)
 	err = c.SetHeartbeat(0, nil)
 	checkErr(t, err, unix.EINVAL)
@@ -395,7 +463,7 @@ func TestSCTPConnErrors(t *testing.T) {
 	checkErr(t, err, unix.EINVAL)
 	err = c1.CloseWrite()
 	checkErr(t, err, unix.EINVAL)
-	_, err = c1.Status()
+	_, err = c1.Status(nil)
 	checkErr(t, err, unix.EINVAL)
 	err = c1.SetHeartbeat(0, nil)
 	checkErr(t, err, unix.EINVAL)
@@ -417,7 +485,8 @@ func TestSCTPConnErrors(t *testing.T) {
 	checkErr(t, err, unix.EINVAL)
 	err = c1.fd.close()
 	checkErr(t, err, unix.EINVAL)
-
+	err = c1.fd.setCookieLife(time.Millisecond)
+	checkErr(t, err, unix.EINVAL)
 }
 
 func checkErr(t *testing.T, err error, errExpected error) {

@@ -40,6 +40,7 @@ Well-structured and comprehensive documentation is prioritized as part of the de
   - Runtime re-binding support through BindAdd and BindRemove
   - Shutdown and Abort support
   - Heartbeat management support
+  - CookieLife management support
   - Most of the TCP tests in Go's net package applied here to SCTP
   - Well documented
 
