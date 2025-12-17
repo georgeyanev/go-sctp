@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.1
+### Update
+- Update unsupported.go to allow compile/build on unsupported platforms.
+
 ## v1.0.0
 ### Add
 - Introduce `CookieLife` field in `InitOptions` and `AssocParams`.

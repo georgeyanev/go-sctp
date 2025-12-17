@@ -12,6 +12,7 @@ import (
 	"net"
 	"runtime"
 	"syscall"
+	"time"
 )
 
 var ErrNotSupported = errors.New("go-sctp is not supported on " + runtime.GOOS)
@@ -88,12 +89,24 @@ func (fd *sctpFD) closeRead() error {
 	return ErrNotSupported
 }
 
-func (fd *sctpFD) status() (*Status, error) {
+func (fd *sctpFD) status(to *net.IPAddr) (*Status, error) {
 	return nil, ErrNotSupported
 }
 
 func (fd *sctpFD) closeWrite() error {
 	return ErrNotSupported
+}
+
+func (fd *sctpFD) setCookieLife(d time.Duration) error {
+	return ErrNotSupported
+}
+
+func (fd *sctpFD) setHeartbeat(d time.Duration, to *net.IPAddr) error {
+	return ErrNotSupported
+}
+
+func (fd *sctpFD) assocInfo() (*AssocParams, error) {
+	return nil, ErrNotSupported
 }
 
 func (d *Dialer) DialSCTPContext(ctx context.Context, network string, raddr *SCTPAddr) (*SCTPConn, error) {
