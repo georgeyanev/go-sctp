@@ -52,7 +52,14 @@ func clientSocket(ctx context.Context, network string, raddr *SCTPAddr, d *Diale
 
 	fd = newFD(family, network)
 	if err = fd.dial(ctx, s, raddr, d); err != nil {
-		_ = unix.Close(s)
+		// Once init has wrapped s in an os.File that file owns the descriptor and
+		// connect closes it on failure; a raw close here would close whatever
+		// descriptor number s has since been reused for.
+		if fd.initialized() {
+			_ = fd.close()
+		} else {
+			_ = unix.Close(s)
+		}
 		return nil, err
 	}
 	return
